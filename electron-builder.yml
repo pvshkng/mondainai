@@ -1,0 +1,21 @@
+appId: com.mondainai.app
+productName: mondainai
+directories:
+  buildResources: resources
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml,bun.lock}'
+asarUnpack:
+  - resources/**
+linux:
+  target: AppImage
+  category: Utility
+mac:
+  target: dmg
+  category: public.app-category.utilities
+win:
+  target: nsis
+npmRebuild: false
