@@ -4,10 +4,18 @@ export interface AppSettings {
 }
 
 export const MODEL_OPTIONS = [
-  { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
-  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' }
+  { id: 'claude-opus-4-8', label: 'Claude Opus 4.8', contextWindow: 1_000_000 },
+  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5', contextWindow: 1_000_000 },
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', contextWindow: 200_000 }
 ] as const
+
+/** Context window (max input tokens) for a model id. */
+export function contextWindowForModel(model: string): number {
+  const option = MODEL_OPTIONS.find((m) => m.id === model)
+  // Unknown/custom model ids fall back to the smallest window we support,
+  // so the compactor errs on the safe side.
+  return option?.contextWindow ?? 200_000
+}
 
 export type MemoryFileName = 'core.md' | 'notes.md' | 'conversations.jsonl'
 
@@ -66,6 +74,9 @@ export type ChatEvent =
   | { type: 'thinking' }
   | { type: 'tool_start'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; id: string; name: string; ok: boolean; summary: string }
+  | { type: 'context'; tokens: number; contextWindow: number }
+  | { type: 'compaction'; phase: 'start' }
+  | { type: 'compaction'; phase: 'done'; tokensBefore: number; tokensAfter: number }
   | { type: 'done'; text: string }
   | { type: 'error'; message: string }
 

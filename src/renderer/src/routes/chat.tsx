@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ChatAttachment, ChatEvent, SkillMeta } from '../../../shared/types'
+import { contextWindowForModel } from '../../../shared/types'
 import { Markdown } from '../components/Markdown'
 
 type AssistantBlock =
   | { kind: 'text'; text: string }
   | { kind: 'tool'; id: string; name: string; input: unknown; done: boolean; ok?: boolean; summary?: string }
+  | { kind: 'compaction'; done: boolean; tokensBefore?: number; tokensAfter?: number }
   | { kind: 'error'; message: string }
 
 type ChatMessage =
@@ -62,6 +64,77 @@ function ToolChip({ block }: { block: Extract<AssistantBlock, { kind: 'tool' }> 
         <pre className="mt-1 max-h-48 overflow-auto rounded-lg border border-ink-800 bg-ink-900 p-3 font-mono text-[11px] leading-relaxed text-ink-400">
           {block.summary}
         </pre>
+      )}
+    </div>
+  )
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`
+  return String(n)
+}
+
+function ContextGauge({
+  tokens,
+  contextWindow
+}: {
+  tokens: number
+  contextWindow: number
+}): React.JSX.Element {
+  const fraction = Math.min(1, tokens / contextWindow)
+  const percent = Math.round(fraction * 100)
+  const radius = 8
+  const circumference = 2 * Math.PI * radius
+  const stroke =
+    fraction >= 0.9 ? 'stroke-danger' : fraction >= 0.7 ? 'stroke-warn' : 'stroke-accent'
+  return (
+    <div
+      title={`Context: ${tokens.toLocaleString()} of ${contextWindow.toLocaleString()} tokens (${percent}%)`}
+      className="flex items-center gap-2 rounded-lg border border-ink-700 px-2.5 py-1.5"
+    >
+      <svg viewBox="0 0 20 20" className="h-4 w-4 -rotate-90">
+        <circle cx="10" cy="10" r={radius} fill="none" strokeWidth="3" className="stroke-ink-700" />
+        <circle
+          cx="10"
+          cy="10"
+          r={radius}
+          fill="none"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray={`${circumference * fraction} ${circumference}`}
+          className={`${stroke} transition-all duration-500`}
+        />
+      </svg>
+      <span className="text-[11px] tabular-nums text-ink-400">
+        {percent}% · {formatTokens(tokens)}/{formatTokens(contextWindow)}
+      </span>
+    </div>
+  )
+}
+
+function CompactionChip({
+  block
+}: {
+  block: Extract<AssistantBlock, { kind: 'compaction' }>
+}): React.JSX.Element {
+  return (
+    <div className="my-1.5 flex items-center gap-2 rounded-lg border border-ink-700 bg-ink-900 px-3 py-1.5 text-xs text-ink-300">
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${block.done ? 'bg-ok' : 'animate-pulse bg-warn'}`}
+      />
+      {block.done ? (
+        <span>
+          Context compacted
+          {block.tokensBefore != null && block.tokensAfter != null && (
+            <span className="text-ink-400">
+              {' '}
+              · {formatTokens(block.tokensBefore)} → {formatTokens(block.tokensAfter)} tokens
+            </span>
+          )}
+        </span>
+      ) : (
+        <span>Compacting conversation to fit the context window…</span>
       )}
     </div>
   )
@@ -136,6 +209,7 @@ export function ChatRoute(): React.JSX.Element {
   const [streaming, setStreaming] = useState(false)
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [activeSkills, setActiveSkills] = useState<Set<string> | null>(null)
+  const [contextTokens, setContextTokens] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -156,6 +230,10 @@ export function ChatRoute(): React.JSX.Element {
 
   useEffect(() => {
     return window.api.chat.onEvent((ev: ChatEvent) => {
+      if (ev.type === 'context') {
+        setContextTokens(ev.tokens)
+        return
+      }
       setMessages((prev) => {
         const next = [...prev]
         const last = next[next.length - 1]
@@ -183,6 +261,22 @@ export function ChatRoute(): React.JSX.Element {
                 ok: ev.ok,
                 summary: ev.summary
               }
+            }
+            break
+          }
+          case 'compaction': {
+            if (ev.phase === 'start') {
+              blocks.push({ kind: 'compaction', done: false })
+            } else {
+              const idx = blocks.findLastIndex((b) => b.kind === 'compaction' && !b.done)
+              const done = {
+                kind: 'compaction' as const,
+                done: true,
+                tokensBefore: ev.tokensBefore,
+                tokensAfter: ev.tokensAfter
+              }
+              if (idx >= 0) blocks[idx] = done
+              else blocks.push(done)
             }
             break
           }
@@ -253,7 +347,10 @@ export function ChatRoute(): React.JSX.Element {
     await window.api.chat.reset()
     setMessages([])
     setStreaming(false)
+    setContextTokens(0)
   }, [])
+
+  const contextWindow = contextWindowForModel(settings?.model ?? '')
 
   const noKey = settings && !settings.apiKey
 
@@ -266,12 +363,15 @@ export function ChatRoute(): React.JSX.Element {
             {settings?.model ?? ''} · {resolvedActive.size} skill{resolvedActive.size === 1 ? '' : 's'} active
           </p>
         </div>
-        <button
-          onClick={newChat}
-          className="rounded-lg border border-ink-700 px-3 py-1.5 text-xs text-ink-300 transition-colors hover:border-ink-600 hover:text-cream"
-        >
-          + New chat
-        </button>
+        <div className="flex items-center gap-2">
+          <ContextGauge tokens={contextTokens} contextWindow={contextWindow} />
+          <button
+            onClick={newChat}
+            className="rounded-lg border border-ink-700 px-3 py-1.5 text-xs text-ink-300 transition-colors hover:border-ink-600 hover:text-cream"
+          >
+            + New chat
+          </button>
+        </div>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6">
@@ -326,6 +426,8 @@ export function ChatRoute(): React.JSX.Element {
                       <Markdown key={j} source={block.text} />
                     ) : block.kind === 'tool' ? (
                       <ToolChip key={j} block={block} />
+                    ) : block.kind === 'compaction' ? (
+                      <CompactionChip key={j} block={block} />
                     ) : (
                       <div
                         key={j}

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { ChatAttachment, ChatEvent, ChatSendPayload, SkillMeta } from '../../shared/types'
+import { contextWindowForModel } from '../../shared/types'
 import { appendConversation, readCoreMemory, runMemoryCommand, type MemoryCommandInput } from './memory'
 import { discoverSkills, readSkill, stripFrontmatter } from './skills'
 import {
@@ -12,6 +13,11 @@ import {
 import { getSettings } from './settings'
 
 const MAX_LOOP_ITERATIONS = 24
+const MAX_OUTPUT_TOKENS = 32000
+// Compact once the conversation fills this share of the usable window
+// (context window minus the output-token reservation).
+const COMPACTION_RATIO = 0.85
+const COMPACTION_MAX_TOKENS = 8000
 
 // Models that support adaptive thinking (Haiku 4.5 does not).
 const ADAPTIVE_THINKING_MODELS = new Set(['claude-opus-4-8', 'claude-sonnet-5'])
@@ -243,11 +249,91 @@ async function executeTool(name: string, input: unknown): Promise<{ content: str
 
 let history: Anthropic.MessageParam[] = []
 let abortController: AbortController | null = null
+// Total tokens the conversation currently occupies in the model's context
+// window. Updated from usage on every response; an estimate until then.
+let contextTokens = 0
 
 export function resetChat(): void {
   abortController?.abort()
   abortController = null
   history = []
+  contextTokens = 0
+}
+
+/** Context occupied after a response = full prompt (cached or not) + output. */
+function usageContextTokens(usage: Anthropic.Usage): number {
+  return (
+    usage.input_tokens +
+    (usage.cache_read_input_tokens ?? 0) +
+    (usage.cache_creation_input_tokens ?? 0) +
+    usage.output_tokens
+  )
+}
+
+const COMPACTOR_SYSTEM = `You are a conversation compactor. The conversation you receive is about to exceed the model's context window and will be replaced by your summary.
+
+Write a detailed continuation briefing that lets the assistant resume seamlessly. Include:
+- The user's goals, requests and preferences stated so far
+- Key facts, decisions and constraints
+- The current task: what has been done, what remains, and the immediate next step
+- Important tool activity: files created or modified (with paths), command results, skills loaded, memory entries written
+- Anything the user asked to remember or that would be costly to rediscover
+
+Write it as a briefing for the assistant. Do not address the user and do not omit in-progress work.`
+
+/**
+ * Automatic context compaction: summarize the whole conversation with the
+ * model and replace the history with that summary so the loop can continue.
+ */
+async function compactContext(
+  client: Anthropic,
+  model: string,
+  emit: (ev: ChatEvent) => void,
+  signal: AbortSignal
+): Promise<void> {
+  const tokensBefore = contextTokens
+  emit({ type: 'compaction', phase: 'start' })
+
+  const response = await client.messages.create(
+    {
+      model,
+      max_tokens: COMPACTION_MAX_TOKENS,
+      system: COMPACTOR_SYSTEM,
+      messages: [
+        ...history,
+        {
+          role: 'user',
+          content:
+            'Compact the conversation above into a continuation briefing now. Reply with the briefing only.'
+        }
+      ]
+    },
+    { signal }
+  )
+
+  const summary = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n')
+    .trim()
+  if (!summary) throw new Error('Context compaction produced an empty summary')
+
+  history = [
+    {
+      role: 'user',
+      content: `<conversation_summary>
+This conversation was automatically compacted to fit the model's context window. Everything before this message was replaced by the following summary:
+
+${summary}
+</conversation_summary>
+
+Continue the conversation from where the summary leaves off.`
+    }
+  ]
+  // The next response's usage gives the exact figure; approximate until then.
+  contextTokens = response.usage.output_tokens + 500
+  emit({ type: 'compaction', phase: 'done', tokensBefore, tokensAfter: contextTokens })
+  emit({ type: 'context', tokens: contextTokens, contextWindow: contextWindowForModel(model) })
 }
 
 export function stopChat(): void {
@@ -273,7 +359,10 @@ export async function sendChat(payload: ChatSendPayload, emit: (ev: ChatEvent) =
   abortController = new AbortController()
   const signal = abortController.signal
 
-  const checkpoint = history.length
+  const contextWindow = contextWindowForModel(settings.model)
+  const compactionThreshold = Math.floor((contextWindow - MAX_OUTPUT_TOKENS) * COMPACTION_RATIO)
+
+  let checkpoint = history.length
   history.push({ role: 'user', content: userContent(payload.text, payload.attachments) })
   await appendConversation({
     role: 'user',
@@ -286,9 +375,17 @@ export async function sendChat(payload: ChatSendPayload, emit: (ev: ChatEvent) =
 
   try {
     for (let iteration = 0; iteration < MAX_LOOP_ITERATIONS; iteration++) {
+      // Automatic context compaction: keep the conversation inside the
+      // model's context window before sending the next request.
+      if (contextTokens > compactionThreshold) {
+        await compactContext(client, settings.model, emit, signal)
+        // History was replaced wholesale; the old rollback point is gone.
+        checkpoint = history.length
+      }
+
       const params: Anthropic.MessageStreamParams = {
         model: settings.model,
-        max_tokens: 32000,
+        max_tokens: MAX_OUTPUT_TOKENS,
         system,
         tools: TOOLS,
         messages: history
@@ -308,6 +405,16 @@ export async function sendChat(payload: ChatSendPayload, emit: (ev: ChatEvent) =
 
       const message = await stream.finalMessage()
       history.push({ role: 'assistant', content: message.content })
+
+      contextTokens = usageContextTokens(message.usage)
+      emit({ type: 'context', tokens: contextTokens, contextWindow })
+
+      // The model hit the context window mid-turn: compact and retry.
+      if ((message.stop_reason as string) === 'model_context_window_exceeded') {
+        await compactContext(client, settings.model, emit, signal)
+        checkpoint = history.length
+        continue
+      }
 
       if (message.stop_reason === 'pause_turn') continue
 
