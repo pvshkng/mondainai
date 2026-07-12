@@ -23,6 +23,8 @@ import {
 import { renderSystemInstruction } from '../prompts/system'
 import { generateTitleFromUserMessage } from '../ai/title'
 import { getMcpTools } from '../mcp/manager'
+import { getSandboxTools } from '../ai/tools'
+import { ensureSandbox } from '../services/sandbox'
 import { getActiveSkills } from '../skills/store'
 import { logger } from '../logger'
 
@@ -95,14 +97,16 @@ async function runStream(
       metadata: {}
     })) as unknown as UIMessage[]
 
+    const sandboxRoot = await ensureSandbox()
+
     const uiStream = createUIMessageStream({
       execute: async ({ writer }) => {
         const result = streamText({
           model: getModel(selection.providerId, selection.modelId),
-          instructions: renderSystemInstruction(new Date().toISOString(), getActiveSkills()),
+          instructions: renderSystemInstruction(new Date().toISOString(), getActiveSkills(), sandboxRoot),
           messages: await convertToModelMessages(allMessages),
-          tools: getMcpTools(),
-          stopWhen: isStepCount(10),
+          tools: { ...getSandboxTools(), ...getMcpTools() },
+          stopWhen: isStepCount(20),
           abortSignal: controller.signal
         })
         writer.merge(toUIMessageStream({ stream: result.stream }))

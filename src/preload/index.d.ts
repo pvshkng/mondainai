@@ -3,6 +3,7 @@ import type {
   ChatApi,
   McpApi,
   ProvidersApi,
+  SandboxApi,
   SettingsApi,
   SkillsApi,
   WindowControlsApi
@@ -16,6 +17,7 @@ declare global {
       providers: ProvidersApi
       mcp: McpApi
       skills: SkillsApi
+      sandbox: SandboxApi
       window: WindowControlsApi
       settings: SettingsApi
     }

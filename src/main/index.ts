@@ -6,6 +6,7 @@ import { registerChatIpc } from './ipc/chat'
 import { registerProvidersIpc } from './ipc/providers'
 import { registerMcpIpc } from './ipc/mcp'
 import { registerSkillsIpc } from './ipc/skills'
+import { registerSandboxIpc } from './ipc/sandbox'
 import { seedFromEnvIfNeeded } from './ai/providers/registry'
 import { closeAllMcpConnections, syncMcpConnections } from './mcp/manager'
 import {
@@ -33,6 +34,7 @@ app.whenReady().then(() => {
   registerProvidersIpc()
   registerMcpIpc()
   registerSkillsIpc()
+  registerSandboxIpc()
   registerWindowIpc()
   void syncMcpConnections()
 

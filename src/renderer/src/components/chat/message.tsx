@@ -16,6 +16,8 @@ import { MessageActions } from "./message-actions";
 import { ThinkingMessage } from "./thinking-message";
 export { ThinkingMessage };
 import { SparklesIcon } from "lucide-react";
+import { ArtifactCard } from "./artifact-card";
+import type { ArtifactInfo } from "@shared/types";
 
 type ToolPartData = {
   type: string;
@@ -241,6 +243,7 @@ function PurePreviewMessage({
   const segments: Array<
     | { kind: "text"; node: ReactNode; key: string }
     | { kind: "tools"; tools: ToolPartData[]; key: string }
+    | { kind: "artifact"; artifact: ArtifactInfo; key: string }
     | { kind: "other"; node: ReactNode; key: string }
   > = [];
 
@@ -289,6 +292,20 @@ function PurePreviewMessage({
       });
     } else if (isToolPart(part)) {
       const toolPart = part as unknown as ToolPartData;
+      if (
+        toolPart.type === "tool-create_artifact" &&
+        toolPart.state === "output-available" &&
+        toolPart.output !== null &&
+        typeof toolPart.output === "object" &&
+        "path" in (toolPart.output as object)
+      ) {
+        segments.push({
+          kind: "artifact",
+          artifact: toolPart.output as ArtifactInfo,
+          key,
+        });
+        return;
+      }
       const lastSeg = segments[segments.length - 1];
       if (lastSeg && lastSeg.kind === "tools") {
         lastSeg.tools.push(toolPart);
@@ -301,6 +318,9 @@ function PurePreviewMessage({
   const renderedParts = segments.map((seg) => {
     if (seg.kind === "text" || seg.kind === "other") {
       return <React.Fragment key={seg.key}>{seg.node}</React.Fragment>;
+    }
+    if (seg.kind === "artifact") {
+      return <ArtifactCard key={seg.key} artifact={seg.artifact} />;
     }
     return <ToolGroup key={seg.key} tools={seg.tools} isLoading={isLoading} />;
   });

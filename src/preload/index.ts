@@ -103,6 +103,18 @@ const skills = {
   }
 }
 
+const sandbox = {
+  readFileBase64(path: string): Promise<string> {
+    return ipcRenderer.invoke('sandbox:readFileBase64', path)
+  },
+  saveFileAs(path: string, suggestedName: string): Promise<string | null> {
+    return ipcRenderer.invoke('sandbox:saveFileAs', path, suggestedName)
+  },
+  openFolder(): Promise<void> {
+    return ipcRenderer.invoke('sandbox:openFolder')
+  }
+}
+
 const windowControls = {
   minimize(): void {
     ipcRenderer.send('window:minimize')
@@ -143,7 +155,7 @@ const settings = {
   }
 }
 
-const api = { chat, providers, mcp, skills, window: windowControls, settings }
+const api = { chat, providers, mcp, skills, sandbox, window: windowControls, settings }
 
 try {
   contextBridge.exposeInMainWorld('electron', electronAPI)
@@ -156,5 +168,6 @@ export type ChatApi = typeof chat
 export type ProvidersApi = typeof providers
 export type McpApi = typeof mcp
 export type SkillsApi = typeof skills
+export type SandboxApi = typeof sandbox
 export type WindowControlsApi = typeof windowControls
 export type SettingsApi = typeof settings
