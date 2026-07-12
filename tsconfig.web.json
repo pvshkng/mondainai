@@ -1,6 +1,16 @@
 {
   "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
   "include": ["src/renderer/src/**/*", "src/preload/index.d.ts", "src/shared/**/*"],
+  "exclude": [
+    "src/renderer/src/routes/**/*",
+    "src/renderer/src/stores/**/*",
+    "src/renderer/src/components/Artifacts.tsx",
+    "src/renderer/src/components/CloseConfirmDialog.tsx",
+    "src/renderer/src/components/Markdown.tsx",
+    "src/renderer/src/components/Planner.tsx",
+    "src/renderer/src/components/Sidebar.tsx",
+    "src/renderer/src/components/TitleBar.tsx"
+  ],
   "compilerOptions": {
     "composite": true,
     "jsx": "react-jsx",

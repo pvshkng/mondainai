@@ -29,6 +29,7 @@
     "@ai-sdk/mistral": "^4.0.8",
     "@ai-sdk/openai": "^4.0.11",
     "@ai-sdk/react": "^4.0.23",
+    "@anthropic-ai/sdk": "^0.111.0",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@fontsource-variable/noto-sans": "^5.2.10",
@@ -48,6 +49,7 @@
     "lucide-react": "^1.14.0",
     "motion": "^12.38.0",
     "nanoid": "^5.1.11",
+    "pptxgenjs": "^4.0.1",
     "radix-ui": "^1.6.2",
     "react": "^19.2.7",
     "react-day-picker": "^10.0.0",
@@ -58,6 +60,7 @@
     "tailwind-merge": "^3.5.0",
     "usehooks-ts": "^3.1.1",
     "vaul": "^1.1.2",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3",
     "zustand": "^5.0.13"
   },
