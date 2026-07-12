@@ -1,6 +1,11 @@
 import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { loadEnv } from './config'
+import { initStore } from './store'
+import { registerChatIpc } from './ipc/chat'
+import { registerProvidersIpc } from './ipc/providers'
+import { seedFromEnvIfNeeded } from './ai/providers/registry'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -32,6 +37,12 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.mondainai')
+
+  loadEnv()
+  seedFromEnvIfNeeded()
+  initStore()
+  registerChatIpc()
+  registerProvidersIpc()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

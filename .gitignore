@@ -149,3 +149,4 @@ out/
 *.tsbuildinfo
 *.ignore.*
 ignore.*
+.ignore/
