@@ -60,6 +60,10 @@ const api: MondainaiApi = {
     info: (): Promise<SandboxInfo> => ipcRenderer.invoke('sandbox:info'),
     list: (): Promise<SandboxEntry[]> => ipcRenderer.invoke('sandbox:list'),
     readFile: (path: string): Promise<string> => ipcRenderer.invoke('sandbox:readFile', path),
+    readFileBase64: (path: string): Promise<string> =>
+      ipcRenderer.invoke('sandbox:readFileBase64', path),
+    saveFileAs: (path: string, suggestedName: string): Promise<string | null> =>
+      ipcRenderer.invoke('sandbox:saveFileAs', path, suggestedName),
     reset: (): Promise<void> => ipcRenderer.invoke('sandbox:reset'),
     openFolder: (): Promise<void> => ipcRenderer.invoke('sandbox:openFolder')
   }

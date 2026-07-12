@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type {
+  AgentTask,
+  AgentTaskStatus,
   ChatAnswersPayload,
   ChatAttachment,
   ChatEvent,
@@ -15,6 +17,7 @@ import {
   execBash,
   readSandboxFile,
   runNodeScript,
+  statSandboxArtifact,
   writeSandboxFile
 } from './sandbox'
 import { getSettings } from './settings'
@@ -183,6 +186,55 @@ Rules:
       required: ['questions'],
       additionalProperties: false
     }
+  },
+  {
+    name: 'update_plan',
+    description: `Create or update your task plan. The user sees it live as a checklist above the chat input while you work, so keep it current.
+
+Rules:
+- For any multi-step task (roughly 3+ distinct steps, or anything involving several tool calls), call this FIRST with the full list of planned steps before starting work.
+- Each call replaces the entire plan: always send the complete task list.
+- Exactly one task should be in_progress at a time. Mark a task in_progress when you start it and completed when you finish it, calling this tool again on each transition.
+- Keep titles short and action-oriented (e.g. "Research agentic UI trends").
+- Skip planning for trivial single-step replies.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        tasks: {
+          type: 'array',
+          description: 'The complete, ordered task list (replaces the previous plan).',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', description: 'Short action-oriented task title.' },
+              status: {
+                type: 'string',
+                enum: ['pending', 'in_progress', 'completed'],
+                description: 'Current status of this task.'
+              }
+            },
+            required: ['title', 'status'],
+            additionalProperties: false
+          }
+        }
+      },
+      required: ['tasks'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'send_artifact',
+    description: `Share a file from the sandbox with the user as a clickable artifact card in the chat. The user can preview it in the app and save it to their device.
+
+Call this after creating any deliverable file (.xlsx, .pptx, .pdf, .csv, images, documents, ...) — creating the file alone is not enough for the user to receive it. The file must already exist in the sandbox.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Sandbox-relative path of the file to share.' }
+      },
+      required: ['path'],
+      additionalProperties: false
+    }
   }
 ]
 
@@ -211,6 +263,23 @@ function parseQuestions(input: unknown): ChatQuestion[] {
       }
     })
     .filter((q) => q.question && q.options.length > 0)
+}
+
+const TASK_STATUSES: ReadonlySet<AgentTaskStatus> = new Set(['pending', 'in_progress', 'completed'])
+
+function parsePlanTasks(input: unknown): AgentTask[] {
+  const raw = (input as { tasks?: unknown })?.tasks
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new Error('update_plan requires a non-empty tasks array')
+  }
+  return raw.map((item, index) => {
+    const task = (item ?? {}) as Record<string, unknown>
+    const title = String(task.title ?? '').trim()
+    const status = task.status as AgentTaskStatus
+    if (!title) throw new Error(`Task ${index + 1} is missing a title`)
+    if (!TASK_STATUSES.has(status)) throw new Error(`Task ${index + 1} has invalid status: ${String(task.status)}`)
+    return { id: String(index), title, status }
+  })
 }
 
 function buildSkillsPrompt(skills: SkillMeta[]): string {
@@ -244,9 +313,17 @@ You can save and recall information with the \`memory\` tool. Search memory (not
 
 ${buildSkillsPrompt(activeSkills)}
 
+## Planning
+
+For multi-step work, maintain a visible plan with the \`update_plan\` tool: create it before starting, then keep statuses current as you progress (exactly one task in_progress at a time). The user watches this checklist while you work. Do not plan trivial single-step replies.
+
 ## Sandbox
 
-You have a local sandbox folder at ${sandboxRoot} (the working directory of the \`bash\`, \`run_node\`, \`write_file\` and \`read_file\` tools). Use it to create files, initialize git repositories and commit code, and generate documents. For .pptx use run_node with require('pptxgenjs'); for .xlsx use run_node with require('xlsx'). Tell the user the file names you created; they can browse the sandbox from the app's Sandbox screen.`
+You have a local sandbox folder at ${sandboxRoot} (the working directory of the \`bash\`, \`run_node\`, \`write_file\` and \`read_file\` tools). Use it to create files, initialize git repositories and commit code, and generate documents. For .pptx use run_node with require('pptxgenjs'); for .xlsx use run_node with require('xlsx').
+
+## Artifacts
+
+When you create a deliverable file for the user (spreadsheet, presentation, PDF, image, document...), share it with the \`send_artifact\` tool so it appears as a clickable card in the chat — the user can preview it there and save it to their device. Files left in the sandbox without send_artifact are only reachable through the app's Sandbox screen.`
 }
 
 function userContent(text: string, attachments: ChatAttachment[]): Anthropic.MessageParam['content'] {
@@ -273,10 +350,31 @@ function userContent(text: string, attachments: ChatAttachment[]): Anthropic.Mes
   return blocks
 }
 
-async function executeTool(name: string, input: unknown): Promise<{ content: string; isError: boolean }> {
+async function executeTool(
+  name: string,
+  input: unknown,
+  emit: (ev: ChatEvent) => void
+): Promise<{ content: string; isError: boolean }> {
   try {
     const args = (input ?? {}) as Record<string, unknown>
     switch (name) {
+      case 'update_plan': {
+        const tasks = parsePlanTasks(input)
+        emit({ type: 'plan', tasks })
+        const completed = tasks.filter((t) => t.status === 'completed').length
+        return {
+          content: `Plan updated: ${tasks.length} task(s), ${completed} completed. The user can see the checklist.`,
+          isError: false
+        }
+      }
+      case 'send_artifact': {
+        const artifact = await statSandboxArtifact(String(args.path ?? ''))
+        emit({ type: 'artifact', artifact })
+        return {
+          content: `Shared ${artifact.name} (${artifact.size} bytes, ${artifact.mediaType}) with the user as an artifact card. They can preview it and save it to their device.`,
+          isError: false
+        }
+      }
       case 'memory': {
         const output = await runMemoryCommand(args as unknown as MemoryCommandInput)
         return { content: output, isError: false }
@@ -605,7 +703,7 @@ export async function sendChat(
         }
 
         emit({ type: 'tool_start', id: tool.id, name: tool.name, input: tool.input })
-        const { content, isError } = await executeTool(tool.name, tool.input)
+        const { content, isError } = await executeTool(tool.name, tool.input, emit)
         emit({
           type: 'tool_result',
           id: tool.id,

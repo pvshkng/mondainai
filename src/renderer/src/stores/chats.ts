@@ -1,5 +1,5 @@
 import { Store } from '@tanstack/store'
-import type { ChatEvent, ChatQuestion } from '../../../shared/types'
+import type { AgentTask, ArtifactInfo, ChatEvent, ChatQuestion } from '../../../shared/types'
 
 export type AssistantBlock =
   | { kind: 'text'; text: string }
@@ -19,6 +19,7 @@ export type AssistantBlock =
       /** null until the user submits; answers[i] belongs to questions[i] */
       answers: string[][] | null
     }
+  | { kind: 'artifact'; artifact: ArtifactInfo }
   | { kind: 'compaction'; done: boolean; tokensBefore?: number; tokensAfter?: number }
   | { kind: 'error'; message: string }
 
@@ -35,6 +36,8 @@ export interface ChatState {
   /** short live description of what the agent is doing, shown in the chat list */
   activity: string
   messages: ChatMessage[]
+  /** the agent's current update_plan checklist */
+  tasks: AgentTask[]
   contextTokens: number
   createdAt: number
   startedAt: number | null
@@ -53,8 +56,14 @@ const TOOL_ACTIVITY: Record<string, string> = {
   bash: 'Running command',
   run_node: 'Running Node script',
   write_file: 'Writing file',
-  read_file: 'Reading file'
+  read_file: 'Reading file',
+  update_plan: 'Updating plan',
+  send_artifact: 'Sharing file'
 }
+
+// Tools whose activity is rendered by dedicated UI (planner accordion,
+// artifact cards) instead of a generic tool chip.
+export const HIDDEN_TOOL_CHIPS = new Set(['update_plan', 'send_artifact'])
 
 function makeChat(): ChatState {
   return {
@@ -63,6 +72,7 @@ function makeChat(): ChatState {
     status: 'idle',
     activity: '',
     messages: [],
+    tasks: [],
     contextTokens: 0,
     createdAt: Date.now(),
     startedAt: null,
@@ -183,14 +193,21 @@ function applyEvent(id: string, ev: ChatEvent): void {
           }
           return blocks
         })
-      case 'tool_start':
-        return applyBlocks(
-          { ...chat, activity: TOOL_ACTIVITY[ev.name] ?? ev.name },
-          (blocks) => {
-            blocks.push({ kind: 'tool', id: ev.id, name: ev.name, input: ev.input, done: false })
-            return blocks
-          }
-        )
+      case 'tool_start': {
+        const withActivity = { ...chat, activity: TOOL_ACTIVITY[ev.name] ?? ev.name }
+        if (HIDDEN_TOOL_CHIPS.has(ev.name)) return withActivity
+        return applyBlocks(withActivity, (blocks) => {
+          blocks.push({ kind: 'tool', id: ev.id, name: ev.name, input: ev.input, done: false })
+          return blocks
+        })
+      }
+      case 'plan':
+        return { ...chat, tasks: ev.tasks }
+      case 'artifact':
+        return applyBlocks(chat, (blocks) => {
+          blocks.push({ kind: 'artifact', artifact: ev.artifact })
+          return blocks
+        })
       case 'tool_result':
         return applyBlocks(chat, (blocks) => {
           const idx = blocks.findIndex((b) => b.kind === 'tool' && b.id === ev.id)

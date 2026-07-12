@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useStore } from '@tanstack/react-store'
-import type { ChatAttachment, SkillMeta } from '../../../shared/types'
+import type { ArtifactInfo, ChatAttachment, SkillMeta } from '../../../shared/types'
 import { contextWindowForModel } from '../../../shared/types'
 import { Markdown } from '../components/Markdown'
+import { Planner } from '../components/Planner'
+import { ArtifactCard, ArtifactPreviewPanel } from '../components/Artifacts'
 import {
   beginUserTurn,
   chatsStore,
@@ -527,6 +529,7 @@ export function ChatRoute(): React.JSX.Element {
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [attachments, setAttachments] = useState<Record<string, ChatAttachment[]>>({})
   const [activeSkills, setActiveSkills] = useState<Set<string> | null>(null)
+  const [previewArtifact, setPreviewArtifact] = useState<ArtifactInfo | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -560,6 +563,11 @@ export function ChatRoute(): React.JSX.Element {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [chat?.messages, activeId])
+
+  // the preview panel belongs to the chat it was opened from
+  useEffect(() => {
+    setPreviewArtifact(null)
+  }, [activeId])
 
   const send = useCallback(async () => {
     const text = input.trim()
@@ -681,6 +689,8 @@ export function ChatRoute(): React.JSX.Element {
                         <Markdown key={j} source={block.text} />
                       ) : block.kind === 'tool' ? (
                         <ToolChip key={j} block={block} />
+                      ) : block.kind === 'artifact' ? (
+                        <ArtifactCard key={j} artifact={block.artifact} onOpen={setPreviewArtifact} />
                       ) : block.kind === 'question' ? (
                         <QuestionCard
                           key={block.toolUseId}
@@ -708,6 +718,7 @@ export function ChatRoute(): React.JSX.Element {
 
         <div className="border-t border-ink-800 px-6 py-4">
           <div className="mx-auto max-w-3xl">
+            <Planner tasks={chat.tasks} />
             {chatAttachments.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
                 {chatAttachments.map((att, i) => (
@@ -806,6 +817,9 @@ export function ChatRoute(): React.JSX.Element {
           </div>
         </div>
       </div>
+      {previewArtifact && (
+        <ArtifactPreviewPanel artifact={previewArtifact} onClose={() => setPreviewArtifact(null)} />
+      )}
     </div>
   )
 }

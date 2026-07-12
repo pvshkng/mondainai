@@ -26,8 +26,10 @@ import {
 } from './services/skills'
 import {
   ensureSandbox,
+  exportSandboxFile,
   listSandbox,
   readSandboxFile,
+  readSandboxFileBase64,
   resetSandbox,
   sandboxInfo
 } from './services/sandbox'
@@ -91,6 +93,17 @@ export function registerIpc(): void {
   ipcMain.handle('sandbox:info', () => sandboxInfo())
   ipcMain.handle('sandbox:list', () => listSandbox())
   ipcMain.handle('sandbox:readFile', (_e, path: string) => readSandboxFile(path))
+  ipcMain.handle('sandbox:readFileBase64', (_e, path: string) => readSandboxFileBase64(path))
+  ipcMain.handle('sandbox:saveFileAs', async (event, path: string, suggestedName: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = await dialog.showSaveDialog(win!, {
+      title: 'Save file',
+      defaultPath: suggestedName
+    })
+    if (result.canceled || !result.filePath) return null
+    await exportSandboxFile(path, result.filePath)
+    return result.filePath
+  })
   ipcMain.handle('sandbox:reset', () => resetSandbox())
   ipcMain.handle('sandbox:openFolder', async () => {
     const root = await ensureSandbox()
