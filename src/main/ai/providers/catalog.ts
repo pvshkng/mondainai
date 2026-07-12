@@ -1,10 +1,5 @@
 import type { ModelInfo } from './types'
 
-/**
- * Curated, illustrative defaults. Users can always add a custom model ID
- * from the Settings UI, so this list doesn't need to be exhaustive or
- * perfectly current.
- */
 export const CATALOG: Record<string, ModelInfo[]> = {
   openai: [
     { id: 'gpt-5.1', label: 'GPT-5.1' },

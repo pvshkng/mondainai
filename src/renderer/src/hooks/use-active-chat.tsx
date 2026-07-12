@@ -16,7 +16,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import useSWR, { useSWRConfig } from "swr";
-import { useVoiceStore } from "@/store/voice-store";
+import { useModelStore } from "@/store/model-store";
 
 import { unstable_serialize } from "swr/infinite";
 import { getChatHistoryPaginationKey } from "@/components/chat/sidebar-history";
@@ -111,16 +111,14 @@ function ChatSession({
     transport: new IPCTransport<ChatMessage>({
       prepareSendMessagesRequest(request) {
         const lastMessage = request.messages.at(-1);
-        const voiceState = useVoiceStore.getState();
-        const modelId = voiceState.isVoiceMode
-          ? voiceState.voiceModelId
-          : voiceState.chatModelId;
+        const selection = useModelStore.getState();
         return {
           body: {
             id: request.id,
             message: lastMessage,
             selectedVisibilityType: visibility,
-            modelId,
+            providerId: selection.providerId ?? undefined,
+            modelId: selection.modelId ?? undefined,
             ...request.body,
           },
         };

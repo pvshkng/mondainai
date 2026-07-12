@@ -57,7 +57,6 @@ function loadConfig(providerId: ProviderId): StoredConfig {
 
 let seeded = false
 
-/** One-time seed from legacy `.env` OPENAI_* vars, so existing setups keep working. */
 export function seedFromEnvIfNeeded(): void {
   if (seeded) return
   seeded = true

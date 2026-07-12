@@ -22,6 +22,9 @@ import {
 } from '../store'
 import { renderSystemInstruction } from '../prompts/system'
 import { generateTitleFromUserMessage } from '../ai/title'
+import { getMcpTools } from '../mcp/manager'
+import { getActiveSkills } from '../skills/store'
+import { logger } from '../logger'
 
 const activeStreams = new Map<string, AbortController>()
 
@@ -96,8 +99,9 @@ async function runStream(
       execute: async ({ writer }) => {
         const result = streamText({
           model: getModel(selection.providerId, selection.modelId),
-          instructions: renderSystemInstruction(new Date().toISOString()),
+          instructions: renderSystemInstruction(new Date().toISOString(), getActiveSkills()),
           messages: await convertToModelMessages(allMessages),
+          tools: getMcpTools(),
           stopWhen: isStepCount(10),
           abortSignal: controller.signal
         })
@@ -126,7 +130,7 @@ async function runStream(
       },
       onError: (error) => {
         const ref = randomUUID().slice(0, 8)
-        console.error('[chat] stream error', ref, error)
+        logger.error('chat', `stream error ${ref}`, error)
         return `Something went wrong. Please try again. (ref: ${ref})`
       }
     })
@@ -139,6 +143,7 @@ async function runStream(
     }
     send(sender, streamId, { type: 'finish' })
   } catch (error) {
+    logger.error('chat', 'stream setup failed', error)
     send(sender, streamId, {
       type: 'error',
       message: error instanceof Error ? error.message : String(error)

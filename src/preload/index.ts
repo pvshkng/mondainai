@@ -7,6 +7,8 @@ import type {
   ProviderTestResult,
   SaveProviderInput
 } from '../shared/provider-types'
+import type { McpServerSummary, McpTestResult, SaveMcpServerInput } from '../shared/mcp-types'
+import type { SaveSkillInput, SkillEntry } from '../shared/skill-types'
 
 type StreamEvent =
   | { streamId: string; type: 'chunk'; chunk: unknown }
@@ -69,7 +71,34 @@ const providers = {
   }
 }
 
-const api = { chat, providers }
+const mcp = {
+  list(): Promise<McpServerSummary[]> {
+    return ipcRenderer.invoke('mcp:list')
+  },
+  save(id: string | null, input: SaveMcpServerInput): Promise<McpServerSummary[]> {
+    return ipcRenderer.invoke('mcp:save', id, input)
+  },
+  delete(id: string): Promise<McpServerSummary[]> {
+    return ipcRenderer.invoke('mcp:delete', id)
+  },
+  test(id: string | null, input: SaveMcpServerInput): Promise<McpTestResult> {
+    return ipcRenderer.invoke('mcp:test', id, input)
+  }
+}
+
+const skills = {
+  list(): Promise<SkillEntry[]> {
+    return ipcRenderer.invoke('appSkills:list')
+  },
+  save(id: string | null, input: SaveSkillInput): Promise<SkillEntry[]> {
+    return ipcRenderer.invoke('appSkills:save', id, input)
+  },
+  delete(id: string): Promise<SkillEntry[]> {
+    return ipcRenderer.invoke('appSkills:delete', id)
+  }
+}
+
+const api = { chat, providers, mcp, skills }
 
 try {
   contextBridge.exposeInMainWorld('electron', electronAPI)
@@ -80,3 +109,5 @@ try {
 
 export type ChatApi = typeof chat
 export type ProvidersApi = typeof providers
+export type McpApi = typeof mcp
+export type SkillsApi = typeof skills

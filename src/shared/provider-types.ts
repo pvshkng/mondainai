@@ -1,10 +1,3 @@
-/**
- * Shape-only types shared between the main process and the renderer/preload
- * boundary. Deliberately dependency-free (no imports from `src/main` or
- * `ai`) so preload/renderer code can use them without pulling the whole
- * main-process dependency graph into the web TypeScript project.
- */
-
 export type ProviderId = 'openai' | 'anthropic' | 'google' | 'azure' | 'bedrock' | 'vertex' | 'mistral'
 
 export type SecretBag = Record<string, string>

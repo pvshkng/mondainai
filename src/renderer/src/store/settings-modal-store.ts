@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type SettingsSection = "providers" | "mcp" | "skills" | "theme";
+export type SettingsSection = "providers" | "mcp" | "skills";
 
 interface SettingsModalState {
   open: boolean;

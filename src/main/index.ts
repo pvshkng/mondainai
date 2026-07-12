@@ -5,7 +5,10 @@ import { loadEnv } from './config'
 import { initStore } from './store'
 import { registerChatIpc } from './ipc/chat'
 import { registerProvidersIpc } from './ipc/providers'
+import { registerMcpIpc } from './ipc/mcp'
+import { registerSkillsIpc } from './ipc/skills'
 import { seedFromEnvIfNeeded } from './ai/providers/registry'
+import { closeAllMcpConnections, syncMcpConnections } from './mcp/manager'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -43,6 +46,9 @@ app.whenReady().then(() => {
   initStore()
   registerChatIpc()
   registerProvidersIpc()
+  registerMcpIpc()
+  registerSkillsIpc()
+  void syncMcpConnections()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -53,6 +59,10 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', () => {
+  void closeAllMcpConnections()
 })
 
 app.on('window-all-closed', () => {

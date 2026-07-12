@@ -1,101 +1,36 @@
 
-import {
-  BrainCircuitIcon,
-  SparklesIcon,
-  CheckIcon,
-  PaletteIcon,
-  FileTextIcon,
-  CodeIcon,
-  ImageIcon,
-  GlobeIcon,
-} from "lucide-react";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { BrainCircuitIcon, CheckIcon, SettingsIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useChatSettings } from "./chat-settings-menu";
 import { AnimatePresence, motion } from "motion/react";
-
-const chatModels = [
-  {
-    id: "gpt-5.4-mini",
-    name: "GPT-5.4 Mini",
-    desc: "Fast & capable",
-    tag: "new" as const,
-  },
-  { id: "gpt-5-mini", name: "GPT-5 Mini", desc: "Balanced performance" },
-  { id: "gpt-4.1", name: "GPT-4.1", desc: "Most capable model" },
-  { id: "gpt-4.1-mini", name: "GPT-4.1 Mini", desc: "Efficient & quick" },
-  { id: "gpt-4.1-nano", name: "GPT-4.1 Nano", desc: "Fastest responses" },
-];
-
-type SkillStatus = "discoverable" | "preload";
-
-interface Skill {
-  id: string;
-  name: string;
-  desc: string;
-  icon: React.ReactNode;
-  status: SkillStatus;
-}
-
-const defaultSkills: Skill[] = [
-  {
-    id: "frontend-design",
-    name: "Frontend Design",
-    desc: "Build polished web interfaces",
-    icon: <PaletteIcon className="size-3.5" />,
-    status: "preload",
-  },
-  {
-    id: "pdf",
-    name: "PDF Processing",
-    desc: "Read, merge & manipulate PDFs",
-    icon: <FileTextIcon className="size-3.5" />,
-    status: "discoverable",
-  },
-  {
-    id: "code-interpreter",
-    name: "Code Interpreter",
-    desc: "Generate code and charts",
-    icon: <CodeIcon className="size-3.5" />,
-    status: "discoverable",
-  },
-  {
-    id: "image-gen",
-    name: "Image Generation",
-    desc: "Generate and edit images",
-    icon: <ImageIcon className="size-3.5" />,
-    status: "discoverable",
-  },
-  {
-    id: "web-search",
-    name: "Web Search",
-    desc: "Search the web for info",
-    icon: <GlobeIcon className="size-3.5" />,
-    status: "discoverable",
-  },
-];
+import type { ConfiguredModel } from "@shared/provider-types";
+import { useModelStore } from "@/store/model-store";
+import { useSettingsModalStore } from "@/store/settings-modal-store";
 
 export function ChatSettingsPanel() {
   const { open, subView, setSubView, setOpen } = useChatSettings();
-  const [selectedModel, setSelectedModel] = useState("gpt-5.4-mini");
-  const [skills, setSkills] = useState<Skill[]>(defaultSkills);
+  const [models, setModels] = useState<ConfiguredModel[]>([]);
+  const providerId = useModelStore((s) => s.providerId);
+  const modelId = useModelStore((s) => s.modelId);
+  const setSelection = useModelStore((s) => s.setSelection);
+  const openSettings = useSettingsModalStore((s) => s.openSection);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const toggleSkillStatus = useCallback((id: string) => {
-    setSkills((prev) =>
-      prev.map((s) =>
-        s.id === id
-          ? {
-              ...s,
-              status:
-                s.status === "preload"
-                  ? ("discoverable" as SkillStatus)
-                  : ("preload" as SkillStatus),
-            }
-          : s,
-      ),
-    );
-  }, []);
+  useEffect(() => {
+    if (!open) return;
+    window.api.providers.models().then((list) => {
+      setModels(list);
+      if (list.length > 0) {
+        const current = list.find(
+          (m) => m.providerId === providerId && m.modelId === modelId,
+        );
+        if (!current) {
+          setSelection(list[0].providerId, list[0].modelId);
+        }
+      }
+    });
+  }, [open, providerId, modelId, setSelection]);
 
   useEffect(() => {
     if (!open) return;
@@ -123,7 +58,9 @@ export function ChatSettingsPanel() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open, setOpen, setSubView]);
 
-  const currentModel = chatModels.find((m) => m.id === selectedModel);
+  const currentModel = models.find(
+    (m) => m.providerId === providerId && m.modelId === modelId,
+  );
 
   return (
     <AnimatePresence>
@@ -136,13 +73,7 @@ export function ChatSettingsPanel() {
           transition={{ duration: 0.12, ease: "easeOut" }}
           className="mb-2"
         >
-          <div
-            className={cn(
-              "flex rounded-lg overflow-hidden w-fit border border-border/30 backdrop-blur-sm bg-background/70 shadow-sm",
-
-            )}
-          >
-            { }
+          <div className="flex rounded-lg overflow-hidden w-fit border border-border/30 backdrop-blur-sm bg-background/70 shadow-sm">
             <nav
               className={cn(
                 "flex flex-col w-40 shrink-0 py-1",
@@ -153,41 +84,32 @@ export function ChatSettingsPanel() {
                 icon={<BrainCircuitIcon className="size-3.5" />}
                 label="Model"
                 active={subView === "model"}
-                detail={currentModel?.name?.replace("GPT-", "")}
+                detail={currentModel?.label}
                 onClick={() => setSubView(subView === "model" ? null : "model")}
-              />
-              <NavButton
-                icon={<SparklesIcon className="size-3.5" />}
-                label="Skills"
-                active={subView === "skills"}
-                detail={`${skills.filter((s) => s.status === "preload").length}`}
-                onClick={() =>
-                  setSubView(subView === "skills" ? null : "skills")
-                }
               />
             </nav>
 
-            { }
             <AnimatePresence mode="wait">
-              {subView && (
+              {subView === "model" && (
                 <motion.div
-                  key={subView}
+                  key="model"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.1 }}
                   className="w-72 max-h-56 overflow-y-auto"
                 >
-                  {subView === "model" && (
-                    <ModelList
-                      models={chatModels}
-                      selected={selectedModel}
-                      onSelect={setSelectedModel}
-                    />
-                  )}
-                  {subView === "skills" && (
-                    <SkillList skills={skills} onToggle={toggleSkillStatus} />
-                  )}
+                  <ModelList
+                    models={models}
+                    selectedProviderId={providerId}
+                    selectedModelId={modelId}
+                    onSelect={setSelection}
+                    onOpenSettings={() => {
+                      setOpen(false);
+                      setSubView(null);
+                      openSettings("providers");
+                    }}
+                  />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -225,7 +147,7 @@ function NavButton({
       {icon}
       <span className="font-medium">{label}</span>
       {detail && (
-        <span className="ml-auto text-[10px] text-muted-foreground/50 tabular-nums">
+        <span className="ml-auto max-w-24 truncate text-[10px] text-muted-foreground/50">
           {detail}
         </span>
       )}
@@ -235,113 +157,85 @@ function NavButton({
 
 function ModelList({
   models,
-  selected,
+  selectedProviderId,
+  selectedModelId,
   onSelect,
+  onOpenSettings,
 }: {
-  models: typeof chatModels;
-  selected: string;
-  onSelect: (id: string) => void;
+  models: ConfiguredModel[];
+  selectedProviderId: string | null;
+  selectedModelId: string | null;
+  onSelect: (providerId: ConfiguredModel["providerId"], modelId: string) => void;
+  onOpenSettings: () => void;
 }) {
+  if (models.length === 0) {
+    return (
+      <div className="flex flex-col items-start gap-2 px-3 py-3">
+        <span className="text-[12px] text-muted-foreground">
+          No providers configured yet.
+        </span>
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          className="inline-flex items-center gap-1.5 rounded-md bg-primary/90 px-2 py-1 text-[11px] font-medium text-primary-foreground transition-opacity hover:opacity-85"
+        >
+          <SettingsIcon className="size-3" />
+          Open Provider Settings
+        </button>
+      </div>
+    );
+  }
+
+  const grouped = new Map<string, ConfiguredModel[]>();
+  for (const model of models) {
+    const list = grouped.get(model.providerLabel) ?? [];
+    list.push(model);
+    grouped.set(model.providerLabel, list);
+  }
+
   return (
     <div className="py-1">
-      <div className="px-3 py-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/40">
-          Chat Model
-        </span>
-      </div>
-      {models.map((m) => (
-        <button
-          key={m.id}
-          type="button"
-          onClick={() => onSelect(m.id)}
-          className={cn(
-            "flex items-center gap-3 w-full px-3 py-2 text-left transition-colors",
-            selected === m.id ? "bg-accent/40" : "hover:bg-accent/20",
-          )}
-        >
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[13px] font-medium text-foreground">
-                {m.name}
-              </span>
-              {"tag" in m && m.tag && (
-                <span className="text-[9px] font-bold uppercase px-1 py-px rounded bg-secondary text-primary leading-tight">
-                  {m.tag}
-                </span>
-              )}
-            </div>
-            <span className="text-[11px] text-muted-foreground/60">
-              {m.desc}
+      {[...grouped.entries()].map(([providerLabel, providerModels]) => (
+        <div key={providerLabel}>
+          <div className="px-3 py-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/40">
+              {providerLabel}
             </span>
           </div>
-          <div
-            className={cn(
-              "size-4 rounded-full border flex items-center justify-center shrink-0 transition-colors",
-              selected === m.id
-                ? "border-primary bg-primary"
-                : "border-border/60",
-            )}
-          >
-            {selected === m.id && <CheckIcon className="size-2.5 text-white" />}
-          </div>
-        </button>
+          {providerModels.map((m) => {
+            const isSelected =
+              m.providerId === selectedProviderId && m.modelId === selectedModelId;
+            return (
+              <button
+                key={`${m.providerId}:${m.modelId}`}
+                type="button"
+                onClick={() => onSelect(m.providerId, m.modelId)}
+                className={cn(
+                  "flex items-center gap-3 w-full px-3 py-2 text-left transition-colors",
+                  isSelected ? "bg-accent/40" : "hover:bg-accent/20",
+                )}
+              >
+                <div className="flex-1 min-w-0">
+                  <span className="block truncate text-[13px] font-medium text-foreground">
+                    {m.label}
+                  </span>
+                  <span className="block truncate text-[11px] text-muted-foreground/60">
+                    {m.modelId}
+                  </span>
+                </div>
+                <div
+                  className={cn(
+                    "size-4 rounded-full border flex items-center justify-center shrink-0 transition-colors",
+                    isSelected ? "border-primary bg-primary" : "border-border/60",
+                  )}
+                >
+                  {isSelected && <CheckIcon className="size-2.5 text-white" />}
+                </div>
+              </button>
+            );
+          })}
+        </div>
       ))}
-    </div>
-  );
-}
-
-function SkillList({
-  skills,
-  onToggle,
-}: {
-  skills: Skill[];
-  onToggle: (id: string) => void;
-}) {
-  return (
-    <div className="py-1">
-      <div className="px-3 py-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/40">
-          Skills
-        </span>
-      </div>
-      {skills.map((skill) => {
-        const active = skill.status === "preload";
-        return (
-          <button
-            key={skill.id}
-            type="button"
-            onClick={() => onToggle(skill.id)}
-            className="flex items-center gap-3 w-full px-3 py-2 text-left transition-colors hover:bg-accent/20"
-          >
-            <div
-              className={cn(
-                "flex items-center justify-center size-7 rounded-lg shrink-0 transition-colors",
-                active
-                  ? "bg-secondary text-primary"
-                  : "bg-muted/50 text-muted-foreground/50",
-              )}
-            >
-              {skill.icon}
-            </div>
-            <div className="flex-1 min-w-0">
-              <span className="text-[13px] font-medium text-foreground block">
-                {skill.name}
-              </span>
-              <span className="text-[11px] text-muted-foreground/50">
-                {skill.desc}
-              </span>
-            </div>
-            <div
-              className={cn(
-                "size-4 mx-5 rounded-full border flex items-center justify-center shrink-0 transition-colors",
-                active ? "border-primary bg-primary" : "border-border/60",
-              )}
-            >
-              {active && <CheckIcon className="size-2.5 text-white" />}
-            </div>
-          </button>
-        );
-      })}
     </div>
   );
 }

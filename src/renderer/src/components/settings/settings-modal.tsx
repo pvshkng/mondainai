@@ -1,4 +1,4 @@
-import { KeySquare, Puzzle, Sparkles, Palette } from "lucide-react";
+import { KeySquare, Puzzle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -13,13 +13,11 @@ import {
 import { ProvidersSection } from "./providers-section";
 import { McpSection } from "./mcp-section";
 import { SkillsSection } from "./skills-section";
-import { ThemeSection } from "./theme-section";
 
 const NAV: { id: SettingsSection; label: string; icon: React.ReactNode }[] = [
   { id: "providers", label: "Providers", icon: <KeySquare className="size-3.5" /> },
   { id: "mcp", label: "MCP", icon: <Puzzle className="size-3.5" /> },
   { id: "skills", label: "Skills", icon: <Sparkles className="size-3.5" /> },
-  { id: "theme", label: "Theme", icon: <Palette className="size-3.5" /> },
 ];
 
 export function SettingsModal() {
@@ -56,7 +54,6 @@ export function SettingsModal() {
               {section === "providers" && <ProvidersSection />}
               {section === "mcp" && <McpSection />}
               {section === "skills" && <SkillsSection />}
-              {section === "theme" && <ThemeSection />}
             </div>
           </ScrollArea>
         </div>

@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { ChatApi, ProvidersApi } from './index'
+import type { ChatApi, McpApi, ProvidersApi, SkillsApi } from './index'
 
 declare global {
   interface Window {
@@ -7,6 +7,8 @@ declare global {
     api: {
       chat: ChatApi
       providers: ProvidersApi
+      mcp: McpApi
+      skills: SkillsApi
     }
   }
 }

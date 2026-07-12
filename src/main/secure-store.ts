@@ -92,11 +92,6 @@ export function listEntryIds(namespace: string): string[] {
     .map((key) => key.slice(prefix.length))
 }
 
-/**
- * Saves config + secrets for one entry. `secrets` values that are omitted or
- * empty keep whatever was previously stored for that key (so blank password
- * fields in a form never wipe out an already-saved credential).
- */
 export function saveEntry<T>(
   namespace: string,
   id: string,

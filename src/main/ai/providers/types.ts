@@ -13,7 +13,6 @@ export type { FieldSchema, FieldType, ModelInfo, ProviderId, ProviderSettings }
 export type ProviderModule = {
   id: ProviderId
   label: string
-  /** True when this provider has no fixed model catalog (e.g. Azure deployments). */
   modelsAreCustomOnly?: boolean
   fields: FieldSchema[]
   models: ModelInfo[]
