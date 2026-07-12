@@ -68,6 +68,26 @@ export interface ChatSendPayload {
   activeSkills: string[]
 }
 
+export interface ChatQuestionOption {
+  label: string
+  description?: string
+}
+
+export interface ChatQuestion {
+  question: string
+  /** short 1-2 word topic label shown as a chip above the question */
+  header?: string
+  multiSelect: boolean
+  options: ChatQuestionOption[]
+}
+
+/** The user's answers to one ask_user_questions tool call. */
+export interface ChatAnswersPayload {
+  toolUseId: string
+  /** answers[i] holds the selected and/or custom answers for questions[i] */
+  answers: string[][]
+}
+
 export type AgentTaskStatus = 'pending' | 'in_progress' | 'completed'
 
 export interface AgentTask {
@@ -101,6 +121,7 @@ export type ChatEvent =
   | { type: 'thinking' }
   | { type: 'tool_start'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; id: string; name: string; ok: boolean; summary: string }
+  | { type: 'questions'; toolUseId: string; questions: ChatQuestion[] }
   | { type: 'plan'; tasks: AgentTask[] }
   | { type: 'artifact'; artifact: ArtifactInfo }
   | { type: 'context'; tokens: number; contextWindow: number }

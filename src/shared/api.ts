@@ -1,5 +1,6 @@
 import type {
   AppSettings,
+  ChatAnswersPayload,
   ChatEvent,
   ChatSendPayload,
   ConversationEntry,
@@ -18,10 +19,11 @@ export interface MondainaiApi {
     set: (patch: Partial<AppSettings>) => Promise<AppSettings>
   }
   chat: {
-    send: (payload: ChatSendPayload) => Promise<void>
-    stop: () => Promise<void>
-    reset: () => Promise<void>
-    onEvent: (callback: (ev: ChatEvent) => void) => () => void
+    send: (chatId: string, payload: ChatSendPayload) => Promise<void>
+    stop: (chatId: string) => Promise<void>
+    reset: (chatId: string) => Promise<void>
+    answer: (chatId: string, payload: ChatAnswersPayload) => Promise<void>
+    onEvent: (callback: (chatId: string, ev: ChatEvent) => void) => () => void
   }
   memory: {
     info: () => Promise<MemoryFileInfo[]>

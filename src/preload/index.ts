@@ -3,6 +3,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type { MondainaiApi } from '../shared/api'
 import type {
   AppSettings,
+  ChatAnswersPayload,
   ChatEvent,
   ChatSendPayload,
   ConversationEntry,
@@ -21,11 +22,15 @@ const api: MondainaiApi = {
       ipcRenderer.invoke('settings:set', patch)
   },
   chat: {
-    send: (payload: ChatSendPayload): Promise<void> => ipcRenderer.invoke('chat:send', payload),
-    stop: (): Promise<void> => ipcRenderer.invoke('chat:stop'),
-    reset: (): Promise<void> => ipcRenderer.invoke('chat:reset'),
-    onEvent: (callback: (ev: ChatEvent) => void): (() => void) => {
-      const listener = (_e: Electron.IpcRendererEvent, ev: ChatEvent): void => callback(ev)
+    send: (chatId: string, payload: ChatSendPayload): Promise<void> =>
+      ipcRenderer.invoke('chat:send', chatId, payload),
+    stop: (chatId: string): Promise<void> => ipcRenderer.invoke('chat:stop', chatId),
+    reset: (chatId: string): Promise<void> => ipcRenderer.invoke('chat:reset', chatId),
+    answer: (chatId: string, payload: ChatAnswersPayload): Promise<void> =>
+      ipcRenderer.invoke('chat:answer', chatId, payload),
+    onEvent: (callback: (chatId: string, ev: ChatEvent) => void): (() => void) => {
+      const listener = (_e: Electron.IpcRendererEvent, chatId: string, ev: ChatEvent): void =>
+        callback(chatId, ev)
       ipcRenderer.on('chat:event', listener)
       return () => ipcRenderer.removeListener('chat:event', listener)
     }
