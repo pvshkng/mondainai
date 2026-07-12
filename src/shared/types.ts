@@ -1,6 +1,15 @@
+/**
+ * What clicking the window's close button does.
+ * - `ask`  — show the confirmation dialog every time (default)
+ * - `tray` — always minimize to the system tray and keep running
+ * - `quit` — always exit the app (after closing connections/tasks)
+ */
+export type CloseBehavior = 'ask' | 'tray' | 'quit'
+
 export interface AppSettings {
   apiKey: string
   model: string
+  closeBehavior: CloseBehavior
 }
 
 export const MODEL_OPTIONS = [

@@ -563,6 +563,20 @@ export function stopChat(chatId: string): void {
   session.abortController?.abort()
 }
 
+/**
+ * Abort every in-flight chat: cancels streaming API requests, wakes up loops
+ * blocked on user questions, and drops all sessions. Called on app shutdown so
+ * we tear down open connections and pending work before the process exits.
+ */
+export function shutdownAllChats(): void {
+  for (const session of sessions.values()) {
+    session.pendingQuestions?.resolve(null)
+    session.pendingQuestions = null
+    session.abortController?.abort()
+  }
+  sessions.clear()
+}
+
 export async function sendChat(
   chatId: string,
   payload: ChatSendPayload,

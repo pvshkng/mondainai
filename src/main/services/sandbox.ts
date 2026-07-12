@@ -1,10 +1,31 @@
-import { exec, execFile } from 'node:child_process'
+import { exec, execFile, type ChildProcess } from 'node:child_process'
 import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, resolve, sep } from 'node:path'
 import type { ArtifactInfo, ArtifactKind, SandboxEntry, SandboxInfo } from '../../shared/types'
 import { appNodeModules, sandboxDir } from './paths'
 
 const MAX_OUTPUT = 32_000
+
+// Live child processes spawned by the sandbox (bash / node runs). Tracked so
+// they can be killed when the app shuts down instead of being orphaned.
+const liveProcesses = new Set<ChildProcess>()
+
+function trackProcess(child: ChildProcess): void {
+  liveProcesses.add(child)
+  child.once('exit', () => liveProcesses.delete(child))
+}
+
+/** Kill every child process still running in the sandbox. Called on app quit. */
+export function killSandboxProcesses(): void {
+  for (const child of liveProcesses) {
+    try {
+      child.kill('SIGKILL')
+    } catch {
+      // process already gone; ignore
+    }
+  }
+  liveProcesses.clear()
+}
 
 export async function ensureSandbox(): Promise<string> {
   const root = sandboxDir()
@@ -57,7 +78,7 @@ export async function execBash(command: string, timeoutSeconds = 60): Promise<Ex
   const cwd = await ensureSandbox()
 
   return new Promise((resolvePromise) => {
-    exec(
+    const child = exec(
       command,
       {
         cwd,
@@ -75,6 +96,7 @@ export async function execBash(command: string, timeoutSeconds = 60): Promise<Ex
         })
       }
     )
+    trackProcess(child)
   })
 }
 
@@ -89,7 +111,7 @@ export async function runNodeScript(code: string, timeoutSeconds = 120): Promise
   await writeFile(scriptPath, code, 'utf8')
 
   return new Promise((resolvePromise) => {
-    execFile(
+    const child = execFile(
       process.execPath,
       [scriptPath],
       {
@@ -111,6 +133,7 @@ export async function runNodeScript(code: string, timeoutSeconds = 120): Promise
         })
       }
     )
+    trackProcess(child)
   })
 }
 

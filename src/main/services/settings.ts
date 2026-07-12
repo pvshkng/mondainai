@@ -5,7 +5,8 @@ import { settingsPath } from './paths'
 
 const DEFAULTS: AppSettings = {
   apiKey: '',
-  model: 'claude-opus-4-8'
+  model: 'claude-opus-4-8',
+  closeBehavior: 'ask'
 }
 
 export async function getSettings(): Promise<AppSettings> {

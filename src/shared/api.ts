@@ -12,11 +12,36 @@ import type {
   SkillMeta
 } from './types'
 
+/** State of the main window's maximize/restore toggle. */
+export interface WindowState {
+  isMaximized: boolean
+}
+
 /** The IPC surface the preload script exposes on window.api. */
 export interface MondainaiApi {
   settings: {
     get: () => Promise<AppSettings>
     set: (patch: Partial<AppSettings>) => Promise<AppSettings>
+  }
+  window: {
+    minimize: () => void
+    toggleMaximize: () => void
+    /** Current maximize state, for initialising the custom title bar. */
+    getState: () => Promise<WindowState>
+    /**
+     * Ask the main process to handle a close request. Depending on the saved
+     * close behaviour it will minimize to tray, quit, or ask the renderer to
+     * show the confirmation dialog (via {@link onShowClosePrompt}).
+     */
+    requestClose: () => void
+    /** Hide the window to the system tray, keeping the app running. */
+    hideToTray: () => void
+    /** Close all connections / pending work, then quit the app. */
+    quit: () => void
+    /** Subscribe to maximize/restore changes; returns an unsubscribe fn. */
+    onMaximizeChange: (callback: (isMaximized: boolean) => void) => () => void
+    /** The main process asks the renderer to show the close confirmation dialog. */
+    onShowClosePrompt: (callback: () => void) => () => void
   }
   chat: {
     send: (chatId: string, payload: ChatSendPayload) => Promise<void>
