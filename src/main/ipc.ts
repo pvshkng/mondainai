@@ -1,10 +1,11 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type {
   AppSettings,
+  ChatAnswersPayload,
   ChatSendPayload,
   MemoryFileName
 } from '../shared/types'
-import { resetChat, sendChat, stopChat } from './services/agent'
+import { answerQuestions, resetChat, sendChat, stopChat } from './services/agent'
 import {
   clearConversations,
   ensureMemoryFilesystem,
@@ -44,14 +45,17 @@ export function registerIpc(): void {
   ipcMain.handle('settings:set', (_e, patch: Partial<AppSettings>) => updateSettings(patch))
 
   // Chat ----------------------------------------------------------------
-  ipcMain.handle('chat:send', (event, payload: ChatSendPayload) => {
+  ipcMain.handle('chat:send', (event, chatId: string, payload: ChatSendPayload) => {
     const contents = event.sender
-    void sendChat(payload, (ev) => {
-      if (!contents.isDestroyed()) contents.send('chat:event', ev)
+    void sendChat(chatId, payload, (ev) => {
+      if (!contents.isDestroyed()) contents.send('chat:event', chatId, ev)
     })
   })
-  ipcMain.handle('chat:stop', () => stopChat())
-  ipcMain.handle('chat:reset', () => resetChat())
+  ipcMain.handle('chat:stop', (_e, chatId: string) => stopChat(chatId))
+  ipcMain.handle('chat:reset', (_e, chatId: string) => resetChat(chatId))
+  ipcMain.handle('chat:answer', (_e, chatId: string, payload: ChatAnswersPayload) =>
+    answerQuestions(chatId, payload)
+  )
 
   // Memory ----------------------------------------------------------------
   ipcMain.handle('memory:info', () => memoryInfo())

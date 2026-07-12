@@ -1,5 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { ChatAttachment, ChatEvent, ChatSendPayload, SkillMeta } from '../../shared/types'
+import type {
+  ChatAnswersPayload,
+  ChatAttachment,
+  ChatEvent,
+  ChatQuestion,
+  ChatSendPayload,
+  SkillMeta
+} from '../../shared/types'
 import { contextWindowForModel } from '../../shared/types'
 import { appendConversation, readCoreMemory, runMemoryCommand, type MemoryCommandInput } from './memory'
 import { discoverSkills, readSkill, stripFrontmatter } from './skills'
@@ -122,8 +129,89 @@ Rules:
       required: ['path'],
       additionalProperties: false
     }
+  },
+  {
+    name: 'ask_user_questions',
+    description: `Ask the user one or more clarifying questions when the request is ambiguous or a decision is genuinely theirs to make. The conversation pauses until they answer. Each question is shown with its options as selectable choices plus a free-form text field for a custom answer, so you do not need an "Other" option. Ask only when the answer changes what you would do next — prefer sensible defaults over asking about trivia.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        questions: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 4,
+          description: 'One to four independent questions.',
+          items: {
+            type: 'object',
+            properties: {
+              question: {
+                type: 'string',
+                description: 'The complete question to ask, ending with a question mark.'
+              },
+              header: {
+                type: 'string',
+                description: 'Very short topic label (1-2 words), e.g. "Approach" or "Library".'
+              },
+              multi_select: {
+                type: 'boolean',
+                description: 'Allow selecting several options. Defaults to false.'
+              },
+              options: {
+                type: 'array',
+                minItems: 2,
+                maxItems: 6,
+                description: 'Distinct answer choices for the user to pick from.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    label: { type: 'string', description: 'Concise choice text (1-5 words).' },
+                    description: {
+                      type: 'string',
+                      description: 'Optional explanation of what this choice means.'
+                    }
+                  },
+                  required: ['label'],
+                  additionalProperties: false
+                }
+              }
+            },
+            required: ['question', 'options'],
+            additionalProperties: false
+          }
+        }
+      },
+      required: ['questions'],
+      additionalProperties: false
+    }
   }
 ]
+
+function parseQuestions(input: unknown): ChatQuestion[] {
+  const args = (input ?? {}) as { questions?: unknown }
+  if (!Array.isArray(args.questions)) return []
+  return args.questions
+    .map((raw) => {
+      const q = (raw ?? {}) as Record<string, unknown>
+      const options = Array.isArray(q.options)
+        ? q.options
+            .map((o) => {
+              const opt = (o ?? {}) as Record<string, unknown>
+              return {
+                label: String(opt.label ?? '').trim(),
+                description: opt.description ? String(opt.description) : undefined
+              }
+            })
+            .filter((o) => o.label)
+        : []
+      return {
+        question: String(q.question ?? '').trim(),
+        header: q.header ? String(q.header) : undefined,
+        multiSelect: Boolean(q.multi_select),
+        options
+      }
+    })
+    .filter((q) => q.question && q.options.length > 0)
+}
 
 function buildSkillsPrompt(skills: SkillMeta[]): string {
   if (skills.length === 0) {
@@ -247,17 +335,43 @@ async function executeTool(name: string, input: unknown): Promise<{ content: str
 
 // ---------------------------------------------------------------------------
 
-let history: Anthropic.MessageParam[] = []
-let abortController: AbortController | null = null
-// Total tokens the conversation currently occupies in the model's context
-// window. Updated from usage on every response; an estimate until then.
-let contextTokens = 0
+interface ChatSession {
+  history: Anthropic.MessageParam[]
+  abortController: AbortController | null
+  // Total tokens the conversation currently occupies in the model's context
+  // window. Updated from usage on every response; an estimate until then.
+  contextTokens: number
+  // Set while the loop is blocked on an ask_user_questions tool call.
+  // Resolving with null means the questions were dismissed (stop/reset).
+  pendingQuestions: { toolUseId: string; resolve: (answers: string[][] | null) => void } | null
+}
 
-export function resetChat(): void {
-  abortController?.abort()
-  abortController = null
-  history = []
-  contextTokens = 0
+const sessions = new Map<string, ChatSession>()
+
+function getSession(chatId: string): ChatSession {
+  let session = sessions.get(chatId)
+  if (!session) {
+    session = { history: [], abortController: null, contextTokens: 0, pendingQuestions: null }
+    sessions.set(chatId, session)
+  }
+  return session
+}
+
+export function resetChat(chatId: string): void {
+  const session = sessions.get(chatId)
+  if (!session) return
+  session.pendingQuestions?.resolve(null)
+  session.pendingQuestions = null
+  session.abortController?.abort()
+  sessions.delete(chatId)
+}
+
+export function answerQuestions(chatId: string, payload: ChatAnswersPayload): void {
+  const session = sessions.get(chatId)
+  if (!session?.pendingQuestions || session.pendingQuestions.toolUseId !== payload.toolUseId) return
+  const { resolve } = session.pendingQuestions
+  session.pendingQuestions = null
+  resolve(payload.answers)
 }
 
 /** Context occupied after a response = full prompt (cached or not) + output. */
@@ -286,12 +400,13 @@ Write it as a briefing for the assistant. Do not address the user and do not omi
  * model and replace the history with that summary so the loop can continue.
  */
 async function compactContext(
+  session: ChatSession,
   client: Anthropic,
   model: string,
   emit: (ev: ChatEvent) => void,
   signal: AbortSignal
 ): Promise<void> {
-  const tokensBefore = contextTokens
+  const tokensBefore = session.contextTokens
   emit({ type: 'compaction', phase: 'start' })
 
   const response = await client.messages.create(
@@ -300,7 +415,7 @@ async function compactContext(
       max_tokens: COMPACTION_MAX_TOKENS,
       system: COMPACTOR_SYSTEM,
       messages: [
-        ...history,
+        ...session.history,
         {
           role: 'user',
           content:
@@ -318,7 +433,7 @@ async function compactContext(
     .trim()
   if (!summary) throw new Error('Context compaction produced an empty summary')
 
-  history = [
+  session.history = [
     {
       role: 'user',
       content: `<conversation_summary>
@@ -331,16 +446,36 @@ Continue the conversation from where the summary leaves off.`
     }
   ]
   // The next response's usage gives the exact figure; approximate until then.
-  contextTokens = response.usage.output_tokens + 500
-  emit({ type: 'compaction', phase: 'done', tokensBefore, tokensAfter: contextTokens })
-  emit({ type: 'context', tokens: contextTokens, contextWindow: contextWindowForModel(model) })
+  session.contextTokens = response.usage.output_tokens + 500
+  emit({ type: 'compaction', phase: 'done', tokensBefore, tokensAfter: session.contextTokens })
+  emit({
+    type: 'context',
+    tokens: session.contextTokens,
+    contextWindow: contextWindowForModel(model)
+  })
 }
 
-export function stopChat(): void {
-  abortController?.abort()
+export function stopChat(chatId: string): void {
+  const session = sessions.get(chatId)
+  if (!session) return
+  // Dismiss any pending questions first so the loop wakes up and then sees
+  // the aborted signal.
+  session.pendingQuestions?.resolve(null)
+  session.pendingQuestions = null
+  session.abortController?.abort()
 }
 
-export async function sendChat(payload: ChatSendPayload, emit: (ev: ChatEvent) => void): Promise<void> {
+export async function sendChat(
+  chatId: string,
+  payload: ChatSendPayload,
+  emit: (ev: ChatEvent) => void
+): Promise<void> {
+  const session = getSession(chatId)
+  if (session.abortController) {
+    emit({ type: 'error', message: 'This chat is still working on the previous message.' })
+    return
+  }
+
   const settings = await getSettings()
   if (!settings.apiKey) {
     emit({ type: 'error', message: 'No API key configured. Add your Anthropic API key in Settings.' })
@@ -356,14 +491,14 @@ export async function sendChat(payload: ChatSendPayload, emit: (ev: ChatEvent) =
   )
   const system = await buildSystemPrompt(activeSkills, sandboxRoot)
 
-  abortController = new AbortController()
-  const signal = abortController.signal
+  session.abortController = new AbortController()
+  const signal = session.abortController.signal
 
   const contextWindow = contextWindowForModel(settings.model)
   const compactionThreshold = Math.floor((contextWindow - MAX_OUTPUT_TOKENS) * COMPACTION_RATIO)
 
-  let checkpoint = history.length
-  history.push({ role: 'user', content: userContent(payload.text, payload.attachments) })
+  let checkpoint = session.history.length
+  session.history.push({ role: 'user', content: userContent(payload.text, payload.attachments) })
   await appendConversation({
     role: 'user',
     content: payload.text,
@@ -377,10 +512,10 @@ export async function sendChat(payload: ChatSendPayload, emit: (ev: ChatEvent) =
     for (let iteration = 0; iteration < MAX_LOOP_ITERATIONS; iteration++) {
       // Automatic context compaction: keep the conversation inside the
       // model's context window before sending the next request.
-      if (contextTokens > compactionThreshold) {
-        await compactContext(client, settings.model, emit, signal)
+      if (session.contextTokens > compactionThreshold) {
+        await compactContext(session, client, settings.model, emit, signal)
         // History was replaced wholesale; the old rollback point is gone.
-        checkpoint = history.length
+        checkpoint = session.history.length
       }
 
       const params: Anthropic.MessageStreamParams = {
@@ -388,7 +523,7 @@ export async function sendChat(payload: ChatSendPayload, emit: (ev: ChatEvent) =
         max_tokens: MAX_OUTPUT_TOKENS,
         system,
         tools: TOOLS,
-        messages: history
+        messages: session.history
       }
       if (ADAPTIVE_THINKING_MODELS.has(settings.model)) {
         params.thinking = { type: 'adaptive' }
@@ -404,15 +539,15 @@ export async function sendChat(payload: ChatSendPayload, emit: (ev: ChatEvent) =
       })
 
       const message = await stream.finalMessage()
-      history.push({ role: 'assistant', content: message.content })
+      session.history.push({ role: 'assistant', content: message.content })
 
-      contextTokens = usageContextTokens(message.usage)
-      emit({ type: 'context', tokens: contextTokens, contextWindow })
+      session.contextTokens = usageContextTokens(message.usage)
+      emit({ type: 'context', tokens: session.contextTokens, contextWindow })
 
       // The model hit the context window mid-turn: compact and retry.
       if ((message.stop_reason as string) === 'model_context_window_exceeded') {
-        await compactContext(client, settings.model, emit, signal)
-        checkpoint = history.length
+        await compactContext(session, client, settings.model, emit, signal)
+        checkpoint = session.history.length
         continue
       }
 
@@ -431,6 +566,44 @@ export async function sendChat(payload: ChatSendPayload, emit: (ev: ChatEvent) =
       const results: Anthropic.ToolResultBlockParam[] = []
       for (const tool of toolUses) {
         if (signal.aborted) break
+
+        if (tool.name === 'ask_user_questions') {
+          const questions = parseQuestions(tool.input)
+          if (questions.length === 0) {
+            results.push({
+              type: 'tool_result',
+              tool_use_id: tool.id,
+              content: 'Invalid input: provide at least one question with at least two options.',
+              is_error: true
+            })
+            continue
+          }
+          // Pause the loop until the user submits answers (or stops the chat).
+          emit({ type: 'questions', toolUseId: tool.id, questions })
+          const answers = await new Promise<string[][] | null>((resolve) => {
+            session.pendingQuestions = { toolUseId: tool.id, resolve }
+          })
+          session.pendingQuestions = null
+          if (answers === null) {
+            // Dismissed via stop/reset; the aborted signal is checked below.
+            results.push({
+              type: 'tool_result',
+              tool_use_id: tool.id,
+              content: 'The user dismissed the questions without answering.',
+              is_error: false
+            })
+            continue
+          }
+          const content = questions
+            .map((q, i) => {
+              const given = (answers[i] ?? []).filter((a) => a.trim())
+              return `Q: ${q.question}\nA: ${given.length > 0 ? given.join('; ') : '(no answer)'}`
+            })
+            .join('\n\n')
+          results.push({ type: 'tool_result', tool_use_id: tool.id, content, is_error: false })
+          continue
+        }
+
         emit({ type: 'tool_start', id: tool.id, name: tool.name, input: tool.input })
         const { content, isError } = await executeTool(tool.name, tool.input)
         emit({
@@ -443,10 +616,10 @@ export async function sendChat(payload: ChatSendPayload, emit: (ev: ChatEvent) =
         results.push({ type: 'tool_result', tool_use_id: tool.id, content, is_error: isError })
       }
       if (signal.aborted) {
-        history.length = checkpoint
+        session.history.length = checkpoint
         break
       }
-      history.push({ role: 'user', content: results })
+      session.history.push({ role: 'user', content: results })
     }
 
     if (fullText) {
@@ -459,13 +632,14 @@ export async function sendChat(payload: ChatSendPayload, emit: (ev: ChatEvent) =
     emit({ type: 'done', text: fullText })
   } catch (err) {
     // Roll the exchange back so the next request has valid turn alternation.
-    history.length = checkpoint
+    session.history.length = checkpoint
     if (signal.aborted) {
       emit({ type: 'done', text: fullText })
       return
     }
     emit({ type: 'error', message: (err as Error).message })
   } finally {
-    abortController = null
+    session.abortController = null
+    session.pendingQuestions = null
   }
 }
