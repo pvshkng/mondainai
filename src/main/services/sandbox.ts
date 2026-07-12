@@ -1,7 +1,7 @@
 import { exec, execFile } from 'node:child_process'
-import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve, sep } from 'node:path'
-import type { SandboxEntry, SandboxInfo } from '../../shared/types'
+import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, extname, join, resolve, sep } from 'node:path'
+import type { ArtifactInfo, ArtifactKind, SandboxEntry, SandboxInfo } from '../../shared/types'
 import { appNodeModules, sandboxDir } from './paths'
 
 const MAX_OUTPUT = 32_000
@@ -130,6 +130,59 @@ export async function readSandboxFile(path: string): Promise<string> {
   const s = await stat(target)
   if (s.size > 512 * 1024) throw new Error(`File too large to read (${s.size} bytes)`)
   return truncate(await readFile(target, 'utf8'))
+}
+
+const MAX_BINARY_READ = 30 * 1024 * 1024
+
+/** Read a sandbox file as base64 (for previewing binary artifacts in the renderer). */
+export async function readSandboxFileBase64(path: string): Promise<string> {
+  const target = resolveSandboxPath(path)
+  const s = await stat(target)
+  if (s.size > MAX_BINARY_READ) throw new Error(`File too large to preview (${s.size} bytes)`)
+  return (await readFile(target)).toString('base64')
+}
+
+const EXTENSION_KINDS: Record<string, { kind: ArtifactKind; mediaType: string }> = {
+  '.xlsx': { kind: 'excel', mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  '.xls': { kind: 'excel', mediaType: 'application/vnd.ms-excel' },
+  '.pptx': { kind: 'powerpoint', mediaType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' },
+  '.ppt': { kind: 'powerpoint', mediaType: 'application/vnd.ms-powerpoint' },
+  '.docx': { kind: 'word', mediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+  '.doc': { kind: 'word', mediaType: 'application/msword' },
+  '.pdf': { kind: 'pdf', mediaType: 'application/pdf' },
+  '.png': { kind: 'image', mediaType: 'image/png' },
+  '.jpg': { kind: 'image', mediaType: 'image/jpeg' },
+  '.jpeg': { kind: 'image', mediaType: 'image/jpeg' },
+  '.gif': { kind: 'image', mediaType: 'image/gif' },
+  '.webp': { kind: 'image', mediaType: 'image/webp' },
+  '.svg': { kind: 'image', mediaType: 'image/svg+xml' },
+  '.csv': { kind: 'csv', mediaType: 'text/csv' },
+  '.md': { kind: 'text', mediaType: 'text/markdown' },
+  '.txt': { kind: 'text', mediaType: 'text/plain' },
+  '.json': { kind: 'text', mediaType: 'application/json' },
+  '.html': { kind: 'text', mediaType: 'text/html' },
+  '.js': { kind: 'text', mediaType: 'text/javascript' },
+  '.ts': { kind: 'text', mediaType: 'text/typescript' },
+  '.css': { kind: 'text', mediaType: 'text/css' }
+}
+
+/** Stat a sandbox file and describe it as a shareable artifact. */
+export async function statSandboxArtifact(path: string): Promise<ArtifactInfo> {
+  const target = resolveSandboxPath(path)
+  const s = await stat(target)
+  if (!s.isFile()) throw new Error(`Not a file: ${path}`)
+  const meta = EXTENSION_KINDS[extname(target).toLowerCase()] ?? {
+    kind: 'other' as ArtifactKind,
+    mediaType: 'application/octet-stream'
+  }
+  const rel = target === sandboxDir() ? '' : target.slice(sandboxDir().length + 1).split(sep).join('/')
+  return { path: rel, name: basename(target), size: s.size, ...meta }
+}
+
+/** Copy a sandbox file to a destination outside the sandbox (user "save as"). */
+export async function exportSandboxFile(path: string, destination: string): Promise<void> {
+  const source = resolveSandboxPath(path)
+  await copyFile(source, destination)
 }
 
 async function walk(dir: string, base: string, out: SandboxEntry[], depth = 0): Promise<void> {

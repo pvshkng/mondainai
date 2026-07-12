@@ -68,12 +68,41 @@ export interface ChatSendPayload {
   activeSkills: string[]
 }
 
+export type AgentTaskStatus = 'pending' | 'in_progress' | 'completed'
+
+export interface AgentTask {
+  id: string
+  title: string
+  status: AgentTaskStatus
+}
+
+export type ArtifactKind =
+  | 'excel'
+  | 'powerpoint'
+  | 'word'
+  | 'pdf'
+  | 'image'
+  | 'csv'
+  | 'text'
+  | 'other'
+
+export interface ArtifactInfo {
+  /** sandbox-relative path */
+  path: string
+  name: string
+  size: number
+  mediaType: string
+  kind: ArtifactKind
+}
+
 export type ChatEvent =
   | { type: 'start' }
   | { type: 'text'; delta: string }
   | { type: 'thinking' }
   | { type: 'tool_start'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; id: string; name: string; ok: boolean; summary: string }
+  | { type: 'plan'; tasks: AgentTask[] }
+  | { type: 'artifact'; artifact: ArtifactInfo }
   | { type: 'context'; tokens: number; contextWindow: number }
   | { type: 'compaction'; phase: 'start' }
   | { type: 'compaction'; phase: 'done'; tokensBefore: number; tokensAfter: number }
