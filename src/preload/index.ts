@@ -9,6 +9,11 @@ import type {
 } from '../shared/provider-types'
 import type { McpServerSummary, McpTestResult, SaveMcpServerInput } from '../shared/mcp-types'
 import type { SaveSkillInput, SkillEntry } from '../shared/skill-types'
+import type { AppSettings } from '../shared/types'
+
+interface WindowState {
+  isMaximized: boolean
+}
 
 type StreamEvent =
   | { streamId: string; type: 'chunk'; chunk: unknown }
@@ -98,7 +103,47 @@ const skills = {
   }
 }
 
-const api = { chat, providers, mcp, skills }
+const windowControls = {
+  minimize(): void {
+    ipcRenderer.send('window:minimize')
+  },
+  toggleMaximize(): void {
+    ipcRenderer.send('window:toggle-maximize')
+  },
+  getState(): Promise<WindowState> {
+    return ipcRenderer.invoke('window:get-state')
+  },
+  requestClose(): void {
+    ipcRenderer.send('window:request-close')
+  },
+  hideToTray(): void {
+    ipcRenderer.send('window:hide-to-tray')
+  },
+  quit(): void {
+    ipcRenderer.send('window:quit')
+  },
+  onMaximizeChange(callback: (isMaximized: boolean) => void): () => void {
+    const listener = (_event: unknown, isMaximized: boolean): void => callback(isMaximized)
+    ipcRenderer.on('window:maximize-changed', listener)
+    return () => ipcRenderer.removeListener('window:maximize-changed', listener)
+  },
+  onShowClosePrompt(callback: () => void): () => void {
+    const listener = (): void => callback()
+    ipcRenderer.on('window:show-close-prompt', listener)
+    return () => ipcRenderer.removeListener('window:show-close-prompt', listener)
+  }
+}
+
+const settings = {
+  get(): Promise<AppSettings> {
+    return ipcRenderer.invoke('settings:get')
+  },
+  set(patch: Partial<AppSettings>): Promise<AppSettings> {
+    return ipcRenderer.invoke('settings:set', patch)
+  }
+}
+
+const api = { chat, providers, mcp, skills, window: windowControls, settings }
 
 try {
   contextBridge.exposeInMainWorld('electron', electronAPI)
@@ -111,3 +156,5 @@ export type ChatApi = typeof chat
 export type ProvidersApi = typeof providers
 export type McpApi = typeof mcp
 export type SkillsApi = typeof skills
+export type WindowControlsApi = typeof windowControls
+export type SettingsApi = typeof settings
