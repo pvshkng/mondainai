@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ChatAttachment, ChatEvent, SkillMeta } from '../../../shared/types'
+import type {
+  AgentTask,
+  ArtifactInfo,
+  ChatAttachment,
+  ChatEvent,
+  SkillMeta
+} from '../../../shared/types'
 import { contextWindowForModel } from '../../../shared/types'
 import { Markdown } from '../components/Markdown'
+import { Planner } from '../components/Planner'
+import { ArtifactCard, ArtifactPreviewPanel } from '../components/Artifacts'
 
 type AssistantBlock =
   | { kind: 'text'; text: string }
   | { kind: 'tool'; id: string; name: string; input: unknown; done: boolean; ok?: boolean; summary?: string }
+  | { kind: 'artifact'; artifact: ArtifactInfo }
   | { kind: 'compaction'; done: boolean; tokensBefore?: number; tokensAfter?: number }
   | { kind: 'error'; message: string }
 
@@ -20,8 +29,14 @@ const TOOL_LABELS: Record<string, string> = {
   bash: 'Running command',
   run_node: 'Running Node script',
   write_file: 'Writing file',
-  read_file: 'Reading file'
+  read_file: 'Reading file',
+  update_plan: 'Updating plan',
+  send_artifact: 'Sharing file'
 }
+
+// Tools whose activity is rendered by dedicated UI (planner accordion,
+// artifact cards) instead of a generic tool chip.
+const HIDDEN_TOOL_CHIPS = new Set(['update_plan', 'send_artifact'])
 
 function toolDetail(name: string, input: unknown): string {
   const args = (input ?? {}) as Record<string, unknown>
@@ -210,6 +225,8 @@ export function ChatRoute(): React.JSX.Element {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [activeSkills, setActiveSkills] = useState<Set<string> | null>(null)
   const [contextTokens, setContextTokens] = useState(0)
+  const [tasks, setTasks] = useState<AgentTask[]>([])
+  const [previewArtifact, setPreviewArtifact] = useState<ArtifactInfo | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -234,6 +251,10 @@ export function ChatRoute(): React.JSX.Element {
         setContextTokens(ev.tokens)
         return
       }
+      if (ev.type === 'plan') {
+        setTasks(ev.tasks)
+        return
+      }
       setMessages((prev) => {
         const next = [...prev]
         const last = next[next.length - 1]
@@ -250,7 +271,12 @@ export function ChatRoute(): React.JSX.Element {
             break
           }
           case 'tool_start':
-            blocks.push({ kind: 'tool', id: ev.id, name: ev.name, input: ev.input, done: false })
+            if (!HIDDEN_TOOL_CHIPS.has(ev.name)) {
+              blocks.push({ kind: 'tool', id: ev.id, name: ev.name, input: ev.input, done: false })
+            }
+            break
+          case 'artifact':
+            blocks.push({ kind: 'artifact', artifact: ev.artifact })
             break
           case 'tool_result': {
             const idx = blocks.findIndex((b) => b.kind === 'tool' && b.id === ev.id)
@@ -348,6 +374,8 @@ export function ChatRoute(): React.JSX.Element {
     setMessages([])
     setStreaming(false)
     setContextTokens(0)
+    setTasks([])
+    setPreviewArtifact(null)
   }, [])
 
   const contextWindow = contextWindowForModel(settings?.model ?? '')
@@ -355,7 +383,8 @@ export function ChatRoute(): React.JSX.Element {
   const noKey = settings && !settings.apiKey
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full">
+      <div className="flex h-full min-w-0 flex-1 flex-col">
       <header className="flex items-center justify-between border-b border-ink-800 px-6 py-3.5">
         <div>
           <h1 className="text-sm font-semibold">Chat</h1>
@@ -426,6 +455,8 @@ export function ChatRoute(): React.JSX.Element {
                       <Markdown key={j} source={block.text} />
                     ) : block.kind === 'tool' ? (
                       <ToolChip key={j} block={block} />
+                    ) : block.kind === 'artifact' ? (
+                      <ArtifactCard key={j} artifact={block.artifact} onOpen={setPreviewArtifact} />
                     ) : block.kind === 'compaction' ? (
                       <CompactionChip key={j} block={block} />
                     ) : (
@@ -446,6 +477,7 @@ export function ChatRoute(): React.JSX.Element {
 
       <div className="border-t border-ink-800 px-6 py-4">
         <div className="mx-auto max-w-3xl">
+          <Planner tasks={tasks} />
           {attachments.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {attachments.map((att, i) => (
@@ -534,6 +566,13 @@ export function ChatRoute(): React.JSX.Element {
           </div>
         </div>
       </div>
+      </div>
+      {previewArtifact && (
+        <ArtifactPreviewPanel
+          artifact={previewArtifact}
+          onClose={() => setPreviewArtifact(null)}
+        />
+      )}
     </div>
   )
 }

@@ -43,6 +43,9 @@ export interface MondainaiApi {
     info: () => Promise<SandboxInfo>
     list: () => Promise<SandboxEntry[]>
     readFile: (path: string) => Promise<string>
+    readFileBase64: (path: string) => Promise<string>
+    /** Save-as dialog for a sandbox file; returns the destination path or null if cancelled. */
+    saveFileAs: (path: string, suggestedName: string) => Promise<string | null>
     reset: () => Promise<void>
     openFolder: () => Promise<void>
   }
