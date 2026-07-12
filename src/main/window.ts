@@ -1,9 +1,8 @@
 import { app, BrowserWindow, ipcMain, Menu, shell, Tray } from 'electron'
 import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
-import { getSettings } from './services/settings'
-import { shutdownAllChats } from './services/agent'
-import { killSandboxProcesses } from './services/sandbox'
+import { getSettings, updateSettings } from './services/settings'
+import { closeAllMcpConnections } from './mcp/manager'
 import { createTrayIcon } from './trayIcon'
 
 let mainWindow: BrowserWindow | null = null
@@ -27,7 +26,7 @@ export function createMainWindow(): BrowserWindow {
     show: false,
     // Remove the OS title bar and border; chrome is drawn by the renderer.
     frame: false,
-    backgroundColor: '#0d0e11',
+    backgroundColor: '#0a0a0a',
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
@@ -116,14 +115,12 @@ async function handleCloseRequest(): Promise<void> {
 }
 
 /**
- * Tear down all background work (streaming API requests, pending questions,
- * sandbox child processes) and then terminate the app.
+ * Tear down background work (open MCP connections) and then terminate the app.
  */
 export async function quitApp(): Promise<void> {
   if (isQuitting) return
   isQuitting = true
-  shutdownAllChats()
-  killSandboxProcesses()
+  await closeAllMcpConnections()
   if (tray && !tray.isDestroyed()) {
     tray.destroy()
     tray = null
@@ -131,11 +128,9 @@ export async function quitApp(): Promise<void> {
   app.quit()
 }
 
-/** Safety net for OS-initiated quits (Cmd+Q, logout): run cleanup once. */
+/** Safety net for OS-initiated quits (Cmd+Q, logout): flag so `close` lets go. */
 export function prepareQuit(): void {
   isQuitting = true
-  shutdownAllChats()
-  killSandboxProcesses()
 }
 
 export function registerWindowIpc(): void {
@@ -151,4 +146,7 @@ export function registerWindowIpc(): void {
   ipcMain.on('window:request-close', () => void handleCloseRequest())
   ipcMain.on('window:hide-to-tray', () => hideToTray())
   ipcMain.on('window:quit', () => void quitApp())
+
+  ipcMain.handle('settings:get', () => getSettings())
+  ipcMain.handle('settings:set', (_event, patch) => updateSettings(patch))
 }

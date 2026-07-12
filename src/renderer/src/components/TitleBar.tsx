@@ -19,8 +19,10 @@ function ControlButton({ label, onClick, danger, children }: ControlButtonProps)
       aria-label={label}
       onClick={onClick}
       style={NO_DRAG}
-      className={`flex h-full w-12 items-center justify-center text-ink-300 transition-colors ${
-        danger ? 'hover:bg-danger hover:text-cream' : 'hover:bg-ink-800 hover:text-cream'
+      className={`flex h-full w-12 items-center justify-center text-muted-foreground transition-colors ${
+        danger
+          ? 'hover:bg-destructive hover:text-white'
+          : 'hover:bg-accent hover:text-foreground'
       }`}
     >
       <svg viewBox="0 0 10 10" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="1.1">
@@ -65,10 +67,10 @@ export function TitleBar(): React.JSX.Element {
     <>
       <header
         style={DRAG}
-        className="flex h-9 shrink-0 items-center justify-between border-b border-ink-800 bg-ink-950 pl-3 select-none"
+        className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-sidebar pl-3 select-none"
       >
-        <div className="flex items-center gap-2 text-ink-300">
-          <svg viewBox="0 0 24 24" className="h-4 w-4 text-accent" fill="none" stroke="currentColor" strokeWidth="2">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <svg viewBox="0 0 24 24" className="h-4 w-4 text-primary" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M4 20 12 4l8 16" />
             <path d="M7.5 14h9" />
           </svg>

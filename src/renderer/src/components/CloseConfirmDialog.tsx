@@ -39,7 +39,7 @@ export function CloseConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/70 p-6 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onCancel()
       }}
@@ -48,10 +48,10 @@ export function CloseConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="close-dialog-title"
-        className="w-full max-w-sm rounded-xl border border-ink-700 bg-ink-900 p-5 shadow-2xl"
+        className="w-full max-w-sm rounded-xl border border-border bg-popover p-5 text-popover-foreground shadow-2xl"
       >
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M12 9v4" />
               <path d="M12 17h.01" />
@@ -59,22 +59,22 @@ export function CloseConfirmDialog({
             </svg>
           </div>
           <div className="min-w-0">
-            <h2 id="close-dialog-title" className="text-sm font-semibold text-cream">
+            <h2 id="close-dialog-title" className="text-sm font-semibold text-foreground">
               Close mondainai?
             </h2>
-            <p className="mt-1 text-xs leading-relaxed text-ink-300">
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               Keep mondainai running in the background, or exit completely. Exiting stops any
               active tasks and closes all connections.
             </p>
           </div>
         </div>
 
-        <label className="mt-4 flex cursor-pointer items-center gap-2 text-xs text-ink-300 select-none">
+        <label className="mt-4 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
           <input
             type="checkbox"
             checked={remember}
             onChange={(e) => setRemember(e.target.checked)}
-            className="h-3.5 w-3.5 accent-accent"
+            className="h-3.5 w-3.5 accent-primary"
           />
           Remember my choice
         </label>
@@ -84,7 +84,7 @@ export function CloseConfirmDialog({
             ref={trayButtonRef}
             type="button"
             onClick={() => onTray(remember)}
-            className="flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-ink-950 transition-colors hover:bg-accent-hover"
+            className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
               <rect x="3" y="4" width="18" height="12" rx="2" />
@@ -97,14 +97,14 @@ export function CloseConfirmDialog({
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 rounded-lg border border-ink-700 px-4 py-2 text-sm text-ink-300 transition-colors hover:bg-ink-800 hover:text-cream"
+              className="flex-1 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={() => onQuit(remember)}
-              className="flex-1 rounded-lg border border-danger/40 px-4 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger hover:text-cream"
+              className="flex-1 rounded-lg border border-destructive/40 px-4 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive hover:text-white"
             >
               Exit app
             </button>

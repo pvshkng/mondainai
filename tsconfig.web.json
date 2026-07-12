@@ -5,11 +5,9 @@
     "src/renderer/src/routes/**/*",
     "src/renderer/src/stores/**/*",
     "src/renderer/src/components/Artifacts.tsx",
-    "src/renderer/src/components/CloseConfirmDialog.tsx",
     "src/renderer/src/components/Markdown.tsx",
     "src/renderer/src/components/Planner.tsx",
-    "src/renderer/src/components/Sidebar.tsx",
-    "src/renderer/src/components/TitleBar.tsx"
+    "src/renderer/src/components/Sidebar.tsx"
   ],
   "compilerOptions": {
     "composite": true,

@@ -50,7 +50,9 @@ export function SettingsModal() {
             ))}
           </nav>
           <ScrollArea className="min-w-0 flex-1">
-            <div className="p-4">
+            {/* Extra top padding keeps section headers/actions clear of the
+                dialog's floating close button in the top-right corner. */}
+            <div className="p-4 pt-10">
               {section === "providers" && <ProvidersSection />}
               {section === "mcp" && <McpSection />}
               {section === "skills" && <SkillsSection />}

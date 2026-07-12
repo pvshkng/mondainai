@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { SettingsIcon } from "lucide-react";
 import { useActiveChat } from "@/hooks/use-active-chat";
 import type { ChatMessage } from "@/lib/types";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useIsPanelNarrow } from "@/hooks/use-mobile";
 import { useInspectPanel } from "@/hooks/use-inspect-panel";
+import { useConfiguredModels } from "@/hooks/use-configured-models";
+import { useSettingsModalStore } from "@/store/settings-modal-store";
 import { InspectPanelContent } from "./inspect-panel";
 
 import { Messages } from "./messages";
@@ -11,6 +14,27 @@ import { MultimodalInput } from "./multimodal-input";
 import { ChatSettingsProvider } from "./chat-settings-menu";
 import { ChatSettingsPanel } from "./chat-settings-panel";
 import { useInputHeight } from "@/hooks/use-chat-scroll";
+
+function ProviderRequiredNotice() {
+  const openSettings = useSettingsModalStore((s) => s.openSection);
+  return (
+    <div className="rounded-2xl border border-border/40 bg-background/70 px-4 py-4 shadow-sm backdrop-blur-xs">
+      <p className="text-sm font-medium text-foreground">No AI provider configured</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Add an API key for at least one provider before you can start chatting. Your key is
+        stored locally on this device.
+      </p>
+      <button
+        type="button"
+        onClick={() => openSettings("providers")}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+      >
+        <SettingsIcon className="size-3.5" />
+        Configure a provider
+      </button>
+    </div>
+  );
+}
 
 export function ChatShell() {
   const {
@@ -28,6 +52,7 @@ export function ChatShell() {
 
   const isPanelNarrow = useIsPanelNarrow();
   const { isOpen: isPanelOpen, closePanel } = useInspectPanel();
+  const { loading: providersLoading, hasProvider } = useConfiguredModels();
 
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
 
@@ -70,30 +95,35 @@ export function ChatShell() {
 
         <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
           <div className="pointer-events-auto mx-auto w-full max-w-4xl px-2 pb-3 md:px-4 md:pb-4">
-            <ChatSettingsPanel />
-            {!isReadonly && (
-              <MultimodalInput
-                ref={inputRef}
-                chatId={chatId}
-                input={input}
-                isChatLoading={isChatLoading}
-                messages={messages}
-                sendMessage={
-                  editingMessage
-                    ? async () => {
-                        setEditingMessage(null);
-                        sendMessage({
-                          role: "user",
-                          parts: [{ type: "text", text: input }],
-                        });
-                        setInput("");
-                      }
-                    : sendMessage
-                }
-                setInput={setInput}
-                status={status}
-                stop={stop}
-              />
+            {!isReadonly && !providersLoading && !hasProvider && (
+              <ProviderRequiredNotice />
+            )}
+            {!isReadonly && hasProvider && (
+              <>
+                <ChatSettingsPanel />
+                <MultimodalInput
+                  ref={inputRef}
+                  chatId={chatId}
+                  input={input}
+                  isChatLoading={isChatLoading}
+                  messages={messages}
+                  sendMessage={
+                    editingMessage
+                      ? async () => {
+                          setEditingMessage(null);
+                          sendMessage({
+                            role: "user",
+                            parts: [{ type: "text", text: input }],
+                          });
+                          setInput("");
+                        }
+                      : sendMessage
+                  }
+                  setInput={setInput}
+                  status={status}
+                  stop={stop}
+                />
+              </>
             )}
           </div>
         </div>
@@ -103,7 +133,7 @@ export function ChatShell() {
 
   if (isPanelNarrow) {
     return (
-      <div className="flex h-dvh w-full flex-col overflow-hidden">
+      <div className="flex h-[calc(100dvh-var(--titlebar-h,0px))] w-full flex-col overflow-hidden">
         {chatContent}
         <InspectPanelContent />
       </div>
@@ -111,7 +141,7 @@ export function ChatShell() {
   }
 
   return (
-    <div className="flex h-dvh w-full overflow-hidden">
+    <div className="flex h-[calc(100dvh-var(--titlebar-h,0px))] w-full overflow-hidden">
       <div
         className="flex h-full min-w-0 flex-1 flex-col transition-[flex] duration-300 ease-in-out"
         style={{ flex: isPanelOpen ? "1 1 60%" : "1 1 100%" }}
