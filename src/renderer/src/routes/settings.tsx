@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { MODEL_OPTIONS } from '../../../shared/types'
+import { MODEL_OPTIONS, type CloseBehavior } from '../../../shared/types'
+
+const CLOSE_BEHAVIORS: { id: CloseBehavior; label: string; description: string }[] = [
+  { id: 'ask', label: 'Ask every time', description: 'Show a dialog to choose tray or exit.' },
+  { id: 'tray', label: 'Minimize to tray', description: 'Keep running in the background.' },
+  { id: 'quit', label: 'Exit the app', description: 'Close connections and quit.' }
+]
 
 export function SettingsRoute(): React.JSX.Element {
   const queryClient = useQueryClient()
@@ -10,6 +16,7 @@ export function SettingsRoute(): React.JSX.Element {
   })
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('claude-opus-4-8')
+  const [closeBehavior, setCloseBehavior] = useState<CloseBehavior>('ask')
   const [showKey, setShowKey] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -17,11 +24,12 @@ export function SettingsRoute(): React.JSX.Element {
     if (settings) {
       setApiKey(settings.apiKey)
       setModel(settings.model)
+      setCloseBehavior(settings.closeBehavior)
     }
   }, [settings])
 
   const save = useMutation({
-    mutationFn: () => window.api.settings.set({ apiKey: apiKey.trim(), model }),
+    mutationFn: () => window.api.settings.set({ apiKey: apiKey.trim(), model, closeBehavior }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['settings'] })
       setSaved(true)
@@ -29,7 +37,11 @@ export function SettingsRoute(): React.JSX.Element {
     }
   })
 
-  const dirty = settings ? apiKey.trim() !== settings.apiKey || model !== settings.model : false
+  const dirty = settings
+    ? apiKey.trim() !== settings.apiKey ||
+      model !== settings.model ||
+      closeBehavior !== settings.closeBehavior
+    : false
 
   return (
     <div className="h-full overflow-y-auto px-8 py-6">
@@ -83,6 +95,36 @@ export function SettingsRoute(): React.JSX.Element {
                   name="model"
                   checked={model === option.id}
                   onChange={() => setModel(option.id)}
+                  className="accent-[#d97757]"
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-ink-300">
+            When closing the window
+          </label>
+          <div className="space-y-2">
+            {CLOSE_BEHAVIORS.map((option) => (
+              <label
+                key={option.id}
+                className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition-colors ${
+                  closeBehavior === option.id
+                    ? 'border-accent/50 bg-accent/10'
+                    : 'border-ink-700 bg-ink-900 hover:border-ink-600'
+                }`}
+              >
+                <span>
+                  <span className="block text-sm text-cream">{option.label}</span>
+                  <span className="block text-[11px] text-ink-500">{option.description}</span>
+                </span>
+                <input
+                  type="radio"
+                  name="closeBehavior"
+                  checked={closeBehavior === option.id}
+                  onChange={() => setCloseBehavior(option.id)}
                   className="accent-[#d97757]"
                 />
               </label>

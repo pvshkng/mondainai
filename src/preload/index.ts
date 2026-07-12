@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { MondainaiApi } from '../shared/api'
+import type { WindowState } from '../shared/api'
 import type {
   AppSettings,
   ChatAnswersPayload,
@@ -20,6 +21,25 @@ const api: MondainaiApi = {
     get: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
     set: (patch: Partial<AppSettings>): Promise<AppSettings> =>
       ipcRenderer.invoke('settings:set', patch)
+  },
+  window: {
+    minimize: (): void => ipcRenderer.send('window:minimize'),
+    toggleMaximize: (): void => ipcRenderer.send('window:toggle-maximize'),
+    getState: (): Promise<WindowState> => ipcRenderer.invoke('window:get-state'),
+    requestClose: (): void => ipcRenderer.send('window:request-close'),
+    hideToTray: (): void => ipcRenderer.send('window:hide-to-tray'),
+    quit: (): void => ipcRenderer.send('window:quit'),
+    onMaximizeChange: (callback: (isMaximized: boolean) => void): (() => void) => {
+      const listener = (_e: Electron.IpcRendererEvent, isMaximized: boolean): void =>
+        callback(isMaximized)
+      ipcRenderer.on('window:maximize-changed', listener)
+      return () => ipcRenderer.removeListener('window:maximize-changed', listener)
+    },
+    onShowClosePrompt: (callback: () => void): (() => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on('window:show-close-prompt', listener)
+      return () => ipcRenderer.removeListener('window:show-close-prompt', listener)
+    }
   },
   chat: {
     send: (chatId: string, payload: ChatSendPayload): Promise<void> =>
