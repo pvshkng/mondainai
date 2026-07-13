@@ -106,7 +106,7 @@ async function runStream(
           instructions: renderSystemInstruction(new Date().toISOString(), getActiveSkills(), sandboxRoot),
           messages: await convertToModelMessages(allMessages),
           tools: { ...getSandboxTools(), ...getMcpTools() },
-          stopWhen: isStepCount(20),
+          stopWhen: isStepCount(40),
           abortSignal: controller.signal
         })
         writer.merge(toUIMessageStream({ stream: result.stream }))

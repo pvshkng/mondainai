@@ -22,7 +22,7 @@ import {
 } from './sandbox'
 import { getSettings } from './settings'
 
-const MAX_LOOP_ITERATIONS = 24
+const MAX_LOOP_ITERATIONS = 40
 const MAX_OUTPUT_TOKENS = 32000
 // Compact once the conversation fills this share of the usable window
 // (context window minus the output-token reservation).
@@ -94,7 +94,7 @@ Rules:
   },
   {
     name: 'run_node',
-    description: `Run a JavaScript (CommonJS) snippet with Node.js, cwd set to the sandbox folder. The modules 'pptxgenjs' (PowerPoint) and 'xlsx' (Excel) are available via require(). Use this to generate .pptx and .xlsx files in the sandbox. Print progress with console.log; write output files with relative paths.`,
+    description: `Run a JavaScript (CommonJS) snippet with Node.js, cwd set to the sandbox folder. The modules 'pptxgenjs' (PowerPoint) and 'xlsx' (Excel) are available via require(). Use this to generate .pptx and .xlsx files in the sandbox. pptxgenjs: slide.addText(text, options) takes a string or array of {text, options} runs first, then a position/style object — never a bare object. Print progress with console.log; write output files with relative paths. If the script fails, fix the code and run it again rather than giving up.`,
     input_schema: {
       type: 'object',
       properties: {
@@ -319,7 +319,11 @@ For multi-step work, maintain a visible plan with the \`update_plan\` tool: crea
 
 ## Sandbox
 
-You have a local sandbox folder at ${sandboxRoot} (the working directory of the \`bash\`, \`run_node\`, \`write_file\` and \`read_file\` tools). Use it to create files, initialize git repositories and commit code, and generate documents. For .pptx use run_node with require('pptxgenjs'); for .xlsx use run_node with require('xlsx').
+A local sandbox was prepared for this chat at ${sandboxRoot}. It is the working directory of the \`bash\`, \`run_node\`, \`write_file\` and \`read_file\` tools — every command and script you run executes inside it. You have no shell access outside these tools; always use them, with sandbox-relative paths. Use the sandbox to create files, initialize git repositories and commit code, and generate documents. For .pptx use run_node with require('pptxgenjs') — slide.addText(text, options) takes a string (or array of { text, options } runs) first and a position/style object second, never a bare object. For .xlsx use run_node with require('xlsx').
+
+## Working style
+
+Keep working until the user's request is fully done — do not stop halfway to report partial progress as the result. When a tool call fails, read the error, fix the cause (correct the code or command) and retry; never apologize and give up after a single failure. Only stop early when you are genuinely blocked on something only the user can provide, and say exactly what you need.
 
 ## Artifacts
 

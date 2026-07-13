@@ -30,7 +30,7 @@ export function getSandboxTools(): ToolSet {
     }),
     run_node: tool({
       description:
-        'Run a CommonJS JavaScript snippet with Node.js, working directory set to the sandbox folder. The modules "pptxgenjs" (PowerPoint) and "xlsx" (Excel) are available via require(). Use this to generate .pptx and .xlsx files. Print progress with console.log; write output files with relative paths.',
+        'Run a CommonJS JavaScript snippet with Node.js, working directory set to the sandbox folder. The modules "pptxgenjs" (PowerPoint) and "xlsx" (Excel) are available via require(). Use this to generate .pptx and .xlsx files. pptxgenjs: slide.addText(text, options) takes a string or array of {text, options} runs first, then a position/style object — never a bare object. Print progress with console.log; write output files with relative paths. If the script fails, fix the code and run it again rather than giving up.',
       inputSchema: z.object({
         code: z.string().describe('CommonJS JavaScript source to execute.'),
         timeout_seconds: z.number().default(120).describe('Timeout in seconds (max 300).')
